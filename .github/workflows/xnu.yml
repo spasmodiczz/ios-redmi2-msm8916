@@ -146,7 +146,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-${{ env.MACHINE_CONFIG }}-${{ env.KERNEL_CONFIG }}-${{ hashFiles('xnu/patches/**', '.github/workflows/xnu.yml') }}
+          # Unique key per run so the job always saves, prefix restore so it
+          # always starts from the newest cache. Keying on the patch hash
+          # meant every patch edit threw the whole ccache away.
+          key: ccache-${{ env.MACHINE_CONFIG }}-${{ env.KERNEL_CONFIG }}-${{ github.run_id }}
           restore-keys: |
             ccache-${{ env.MACHINE_CONFIG }}-${{ env.KERNEL_CONFIG }}-
 
