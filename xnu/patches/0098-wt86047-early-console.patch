@@ -129,12 +129,20 @@ index 6928957..6b7d3a4 100644
  	__asm__ volatile("dsb sy" ::: "memory");
  	sweet_early_string("SWEET EARLY ");
  	if (stage >= 10) {
-@@ -129,7 +176,11 @@
+@@ -129,7 +176,19 @@
  sweet_early_relocate(uint64_t base)
  {
  	sweet_early_mark(8, "leaving bootstrap TTBR0");
 +#if defined(WT86047)
-+	early_fb = (volatile uint8_t *)(uintptr_t)(base + 0x1FA400);
++	/*
++	 * The alias is a 2 MB L2 block, so the block maps from the 2 MB aligned VA
++	 * below `base`. sweet_early_map_final() installs it with the physical base
++	 * 0x83000000 at that block base, which means every access through `base`
++	 * would be shifted by the in-block offset (base & 0x1FFFFF). Anchor on the
++	 * block base first, then add the row-960 offset.
++	 */
++	early_fb = (volatile uint8_t *)(uintptr_t)
++	    ((base & ~(uint64_t)0x1FFFFFULL) + 0x1FA400);
 +#else
  	early_fb = (volatile uint32_t *)(uintptr_t)base;
 +#endif
