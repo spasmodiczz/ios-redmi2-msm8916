@@ -2,7 +2,7 @@ diff --git a/pexpert/arm/pe_serial.c b/pexpert/arm/pe_serial.c
 index 997a4ab..db26bbe 100644
 --- a/pexpert/arm/pe_serial.c
 +++ b/pexpert/arm/pe_serial.c
-@@ -697,6 +697,152 @@ register_serial_functions(struct pe_serial_functions *fns)
+@@ -697,6 +697,162 @@ register_serial_functions(struct pe_serial_functions *fns)
  	gPESF = fns;
  }
  
@@ -20,6 +20,7 @@ index 997a4ab..db26bbe 100644
 + */
 +
 +extern unsigned char iso_font[256 * 16];
++extern void sweet_early_putc(char c);
 +
 +#define FBCON_SCALE     1
 +#define FBCON_FG        0xffffffffu
@@ -71,6 +72,15 @@ index 997a4ab..db26bbe 100644
 +static void
 +fbcon_transmit_data(uint8_t c)
 +{
++	/*
++	 * wt86047: draw everything with the early console so the kprintf text and
++	 * the stage-mark band share one origin and one column counter. Keeping two
++	 * independent cursors on the same 720x320 window made the text sit offset
++	 * from the marks and wrap past the right edge.
++	 */
++	sweet_early_putc((char)c);
++	return;
++
 +	if (c == '\r') {
 +		fbcon_col = 0;
 +		return;
