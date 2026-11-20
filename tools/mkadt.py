@@ -23,9 +23,9 @@ GICC, GICC_SIZE = 0x0b002000, 0x1000
 # wt86047 (msm8916): DTB splash_region@83000000, 20 MiB. The santoni value
 # (0x90001000) is a different region on this SoC -- writing there draws
 # nothing and tramples memory xnu may use.
-FB, FB_SIZE = 0x83000000, 720 * 1280 * 3
+FB, FB_SIZE = 0x83000000 + 960 * 2160, 720 * 320 * 3
 SWEET_ECID = 0x5754383630343721  # 'WT86047' + 1, synthetic
-FB_W, FB_H, FB_STRIDE = 720, 1280, 720 * 3
+FB_W, FB_H, FB_STRIDE = 720, 320, 720 * 3
 TIMEBASE = 19200000
 VTIMER_INTID = 20
 # QEMU virt (-M virt,gic-version=2 -cpu cortex-a53): GICD/GICC and the generic timer's CNTFRQ
@@ -117,23 +117,24 @@ def build(seed=None, qemu=False, native=False):
         # with CSR_ALLOW_UNRESTRICTED_FS (vm_unix.c shared region checks).
         node('asmb', [ph(), ('lp-sip0', u64(0x6f)), ('lp-sip1', u32(1))])])
 
-    # Qualcomm MSM8937 Octa-core Cortex-A53
-    # LK boots on Cluster 1 Core 0 (MPIDR 0x100).
-    # XNU and SweetCPU require the boot CPU to be logical CPU 0.
-    # List Cluster 1 (0x100-0x103) as cpu0-cpu3, and Cluster 0 (0x000-0x003) as cpu4-cpu7.
-    cpu_phys_ids = [0x100, 0x101, 0x102, 0x103, 0x000, 0x001, 0x002, 0x003]
+    # Qualcomm MSM8916 Quad-core Cortex-A53, one cluster, phys ids 0x000..0x003.
+    # Measured on wt86047: LK enters the kernel with MPIDR_EL1 = 0x80000000, i.e.
+    # Aff0=0/Aff1=0. XNU requires the boot CPU to be logical CPU 0, so phys 0
+    # must be cpu0. Listing santoni's 0x100-0x103 first would make the booting
+    # core logical cpu4 and trip the cpu_id assertion in machine_routines.c.
+    cpu_phys_ids = [0x000, 0x001, 0x002, 0x003]
     cpu_nodes = []
     for i, phys_id in enumerate(cpu_phys_ids):
         cluster = phys_id >> 8
         core = phys_id & 3
-        clk = 1401600000 if cluster == 1 else 1094400000
+        clk = 1209600000               # A53 max on msm8916
         # By default, Core 4 (0x100) is marked running because LK boots on the high-performance cluster.
         # Bare-metal shim loader dynamically updates state based on live MPIDR_EL1.
-        state = 'running' if phys_id == 0x100 else 'stopped'
+        state = 'running' if phys_id == 0x000 else 'stopped'
         cn = node(f'cpu{i}', [
             ph(),
             ('device_type', cstr('cpu')),
-            ('compatible', cstr('arm,cortex-a53') + cstr('qcom,kryo470') + cstr('ARM,v8')),
+            ('compatible', cstr('arm,cortex-a53') + cstr('ARM,v8')),
             ('reg', u32(phys_id)),
             ('cpu-id', u32(i)),
             ('cluster-id', u32(cluster)),
