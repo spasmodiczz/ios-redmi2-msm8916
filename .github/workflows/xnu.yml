@@ -60,18 +60,24 @@ jobs:
     if: ${{ inputs.userspace_only != 'true' && inputs.userspace_only != 'mesa' && inputs.userspace_only != 'gles' && inputs.userspace_only != 'capture' }}
     # Xcode 16.0's explicit older iig target preserves the XNU 8796 IORPC ABI.
     # macos-14 is unavailable and retiring; pin the tested toolchain.
-    runs-on: macos-15
+    # x86_64 image: the arm64 macos-15 pool starves on queue time.
+    runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
       - name: Prepare tested host compiler and LLVM audit tools
         run: |
+          # Prefer the tested 16.0; the intel image may ship a different 16.x.
           XC=/Applications/Xcode_16.0.app
-          test -d "$XC"
+          if [ ! -d "$XC" ]; then
+            XC=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          fi
+          test -n "$XC" && test -d "$XC"
+          echo "using $XC"
           sudo xcode-select -s "$XC"
           echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
-          test "$(xcodebuild -version | head -1)" = "Xcode 16.0"
+          case "$(xcodebuild -version | head -1)" in "Xcode 16"*) ;; *) echo "need Xcode 16.x"; xcodebuild -version; exit 1;; esac
           brew install llvm
           LLVM_PREFIX=$(brew --prefix llvm)
           mkdir host-llvm-bin
@@ -132,7 +138,7 @@ jobs:
           echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
           sudo xcode-select -s "$XC"
           xcodebuild -version
-          test "$(xcodebuild -version | head -1)" = "Xcode 16.0"
+          case "$(xcodebuild -version | head -1)" in "Xcode 16"*) ;; *) echo "need Xcode 16.x"; xcodebuild -version; exit 1;; esac
           printf 'OTHER_IIG_FLAGS=%s\n' "$OTHER_IIG_FLAGS"
           xcrun --find iig
           mkdir -p "$CCACHE_WRAP"
@@ -326,18 +332,24 @@ jobs:
 
   graphics_userspace:
     if: ${{ inputs.userspace_only == 'true' || inputs.userspace_only == 'mesa' || inputs.userspace_only == 'gles' || inputs.userspace_only == 'capture' }}
-    runs-on: macos-15
+    # x86_64 image: the arm64 macos-15 pool starves on queue time.
+    runs-on: macos-15-intel
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Select the tested Xcode toolchain
         run: |
+          # Prefer the tested 16.0; the intel image may ship a different 16.x.
           XC=/Applications/Xcode_16.0.app
-          test -d "$XC"
+          if [ ! -d "$XC" ]; then
+            XC=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          fi
+          test -n "$XC" && test -d "$XC"
+          echo "using $XC"
           sudo xcode-select -s "$XC"
           echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
           xcodebuild -version
-          test "$(xcodebuild -version | head -1)" = "Xcode 16.0"
+          case "$(xcodebuild -version | head -1)" in "Xcode 16"*) ;; *) echo "need Xcode 16.x"; xcodebuild -version; exit 1;; esac
       - name: Check actual userspace transport contracts
         run: python3 -m unittest tests.test_santoni_graphics_client
       - name: Build the isolated iOS BO/IB proof
