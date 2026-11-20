@@ -8,7 +8,13 @@
 #include "console.h"
 #include "loader.h"
 
-char _end[4096] __attribute__((aligned(4096)));
+/*
+ * Stand-in for the shim image end that loader_boot() probes for an embedded
+ * payload (see IMAGE_END in loader.c). Must be big enough that the 4 KiB-rounded
+ * probe address plus 8 bytes stays inside the object. Not named _end: on ELF the
+ * linker defines _end itself as "end of .bss", and references bind to that.
+ */
+char shim_image_end[0x10000] __attribute__((aligned(4096)));
 volatile uint8_t *con_fb = NULL;
 
 void con_clear(uint32_t bg) { (void)bg; }
@@ -126,10 +132,10 @@ int main(void)
 
 	struct boot_args *ba = (struct boot_args *)ba_pa;
 	assert(ba->Video.v_depth == 24);
-	assert(ba->Video.v_rowBytes == 2160);
-	assert(ba->Video.v_width == 720);
-	assert(ba->Video.v_height == 1280);
-	assert(ba->Video.v_baseAddr == 0x90001000UL);
+	assert(ba->Video.v_rowBytes == FB_STRIDE);
+	assert(ba->Video.v_width == FB_W);
+	assert(ba->Video.v_height == FB_H);
+	assert(ba->Video.v_baseAddr == FB_BASE);
 	assert((ba_pa & 0xfff) == 0);
 	assert(ba->Revision == 2 && ba->Version == 2);
 	assert(strcmp(ba->CommandLine, "console=null santoni") == 0);

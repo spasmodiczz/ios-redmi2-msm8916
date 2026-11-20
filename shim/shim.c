@@ -180,9 +180,105 @@ static uint32_t to_us(uint64_t ticks)
 
 /* ---- main ---- */
 
+static int str_is(const char *a, const char *b)
+{
+	while (*a && *a == *b) {
+		a++;
+		b++;
+	}
+	return *a == *b;
+}
+
+#ifdef SHIM_FB_PROBE
+/*
+ * 帧缓冲探针：不确定 8916 的 LK splash 用什么通道顺序 / stride 时用它。
+ * 四等分竖带按 **RGB 顺序**逐字节写（p[0]=R, p[1]=G, p[2]=B）：
+ *   x<180 FF0000 | x<360 00FF00 | x<540 0000FF | 其余 FFFFFF
+ * 每 64 行画 3 行黑色标记，数标记条数即可反推 stride 是否被压缩/拉伸。
+ * 画完停住，不重启（先关看门狗）。
+ */
+#include "font.h"
+
+static void probe_px(int x, int y, uint8_t r, uint8_t g, uint8_t b)
+{
+	if (x < 0 || x >= FB_W || y < 0 || y >= FB_H)
+		return;
+	volatile uint8_t *p = (volatile uint8_t *)FB_BASE + y * FB_STRIDE + x * 3;
+	/* wt86047 实测：字节 0 → 绿，字节 1 → 红，字节 2 → 蓝 */
+	p[0] = g; p[1] = r; p[2] = b;
+}
+
+static void __attribute__((unused)) probe_text(int x0, int y0, const char *s)
+{
+	for (; *s; s++, x0 += 16) {
+		char ch = *s;
+		if (ch < 0x20 || ch > 0x7e)
+			ch = '?';
+		const unsigned char *g = font8x16[ch - 0x20];
+		for (int gy = 0; gy < 16; gy++)
+			for (int gx = 0; gx < 8; gx++)
+				if (g[gy] & (0x80 >> gx))
+					for (int sy = 0; sy < 2; sy++)
+						for (int sx = 0; sx < 2; sx++)
+							probe_px(x0 + gx * 2 + sx, y0 + gy * 2 + sy, 0, 0, 0);
+	}
+}
+
+static void __attribute__((noreturn)) probe_fb(void)
+{
+	struct wdt_state w0, w1;
+	wdt_quiesce(&w0, &w1);		/* 别让看门狗把我们打回 LK */
+
+	/*
+	 * 16 个 80 行色块，每块写上块号。用来一次定死三件事：
+	 *   1) 可见窗口到底是缓冲区的哪几行（看得到哪几个块号）
+	 *   2) 通道顺序（块 0 是红就说明 G/R 交换已经修对）
+	 *   3) 字形能不能渲染
+	 */
+	static const uint8_t pal[16][3] = {
+		{255, 0, 0},     {0, 255, 0},     {0, 0, 255},     {255, 255, 0},
+		{0, 255, 255},   {255, 0, 255},   {255, 255, 255}, {0, 0, 0},
+		{128, 0, 0},     {0, 128, 0},     {0, 0, 128},     {128, 128, 0},
+		{0, 128, 128},   {128, 0, 128},   {128, 128, 128}, {192, 192, 192},
+	};
+
+	for (int b = 0; b < 16; b++) {
+		int y0 = b * 80;
+		uint8_t fg = (b == 6 || b == 15) ? 0 : 255;	/* 亮块用黑字 */
+		for (int y = y0; y < y0 + 80; y++)
+			for (int x = 0; x < FB_W; x++)
+				probe_px(x, y, pal[b][0], pal[b][1], pal[b][2]);
+
+		char tag[5];
+		tag[0] = 'R';
+		tag[1] = '0' + b / 10;
+		tag[2] = '0' + b % 10;
+		tag[3] = 0;
+		/* fg==0 表示画黑字，这里直接调 probe_px 画（无背景） */
+		for (char *s = tag; *s; s++) {
+			const unsigned char *g = font8x16[*s - 0x20];
+			int x0 = 16 + (int)(s - tag) * 24;
+			for (int gy = 0; gy < 16; gy++)
+				for (int gx = 0; gx < 8; gx++)
+					if (g[gy] & (0x80 >> gx))
+						for (int sy = 0; sy < 3; sy++)
+							for (int sx = 0; sx < 3; sx++)
+								probe_px(x0 + gx * 3 + sx, y0 + 16 + gy * 3 + sy, fg, fg, fg);
+		}
+	}
+
+	for (;;)
+		__asm__ volatile("wfe");
+}
+#endif
+
 void shim_main(uint64_t dtb)
 {
 	struct mmu_info mi;
+
+#ifdef SHIM_FB_PROBE
+	probe_fb();
+#endif
 
 	stage = "loader";
 	con_clear(RED);
@@ -210,25 +306,21 @@ void shim_main(uint64_t dtb)
 	con_skip();
 
 	/*
-	 * If loader_boot returns an error other than "no initrd in /chosen",
-	 * a payload was provided but failed validation. Halt so the error
-	 * remains clearly displayed on screen rather than cleared by benchmarks.
+	 * A payload that failed validation must stay on screen instead of being
+	 * scrolled away by the benchmarks. "Nothing to load" is not an error:
+	 * without a payload the shim is just a hardware diagnostic, which is
+	 * exactly what stage 1 needs before XNU exists. loader_boot() reports that
+	 * as either "no initrd in /chosen" or "no SWEETXNU payload".
 	 */
 	if (why) {
-		int is_no_initrd = 1;
-		const char *noid = "no initrd in /chosen";
-		for (int i = 0; noid[i] || why[i]; i++) {
-			if (noid[i] != why[i]) {
-				is_no_initrd = 0;
-				break;
-			}
-		}
-		if (!is_no_initrd) {
+		int nothing_to_load = str_is(why, "no initrd in /chosen") ||
+				      str_is(why, "no SWEETXNU payload");
+		if (!nothing_to_load) {
 			con_str("HALT", "payload load failed");
 			for (;;)
 				__asm__ volatile("wfe");
 		}
-		delay_ms(1000);
+		delay_ms(500);
 	}
 
 	stage = "fill off";

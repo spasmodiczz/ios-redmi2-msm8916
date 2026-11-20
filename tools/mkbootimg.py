@@ -36,6 +36,9 @@ def main():
     parser.add_argument("--kernel", required=True, help="path to kernel image")
     parser.add_argument("--ramdisk", default=None, help="path to ramdisk image")
     parser.add_argument("--second", default=None, help="path to second stage binary")
+    parser.add_argument("--dt", default=None,
+                        help="appended QCDT blob (Qualcomm v0 layout: sets dt_size at 0x28 "
+                             "and appends the blob page-aligned)")
     parser.add_argument("--cmdline", default="", help="kernel command line")
     parser.add_argument("--base", default="0x80000000", help="base address (hex or int)")
     parser.add_argument("--kernel_offset", default="0x00008000", help="kernel offset from base")
@@ -71,6 +74,17 @@ def main():
     if args.second and os.path.exists(args.second):
         with open(args.second, "rb") as f:
             second_data = f.read()
+    second_size = len(second_data)
+
+    dt_data = b""
+    if args.dt and os.path.exists(args.dt):
+        with open(args.dt, "rb") as f:
+            dt_data = f.read()
+    # LK computes the blob extent from dt_size and rejects a mismatch, so the
+    # appended blob must be an exact multiple of the page size.
+    if dt_data:
+        dt_data = pad_bytes(dt_data, page_size)
+    dt_size = len(dt_data)
     second_size = len(second_data)
 
     # Compute SHA-1 digest across components
@@ -111,6 +125,11 @@ def main():
     )
     assert len(header) == 1632, f"Invalid header size: {len(header)} != 1632"
 
+    # Qualcomm v0 puts dt_size where AOSP has header_version. Without it the
+    # device's LK aborts fastboot boot with "dtb not found".
+    if dt_size:
+        header = header[:40] + struct.pack("<I", dt_size) + header[44:]
+
     with open(args.output, "wb") as out_f:
         out_f.write(pad_bytes(header, page_size))
         out_f.write(pad_bytes(kernel_data, page_size))
@@ -118,8 +137,11 @@ def main():
             out_f.write(pad_bytes(ramdisk_data, page_size))
         if second_size > 0:
             out_f.write(pad_bytes(second_data, page_size))
+        if dt_size > 0:
+            out_f.write(dt_data)
 
-    print(f"Packed {args.output}: kernel={kernel_size}B, ramdisk={ramdisk_size}B, page={page_size}B")
+    extra = f", dt={dt_size}B" if dt_size else ""
+    print(f"Packed {args.output}: kernel={kernel_size}B, ramdisk={ramdisk_size}B, page={page_size}B{extra}")
 
 
 if __name__ == "__main__":

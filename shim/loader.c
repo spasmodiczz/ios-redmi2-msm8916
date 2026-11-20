@@ -77,8 +77,19 @@ static int magic_ok(const char *m)
 
 typedef void (*xnu_entry_t)(uint64_t boot_args_pa);
 
-/* build.sh appends the payload to the Image at the first 4K boundary after _end */
+/*
+ * build.sh appends the payload to the Image at the first 4K boundary after the
+ * end of the shim. On target shim.ld defines _end. On an ELF host _end is a
+ * built-in linker symbol meaning "end of .bss", so the host test supplies
+ * shim_image_end instead — otherwise the probe reads past the mapping and SEGVs.
+ */
+#if __STDC_HOSTED__
+extern char shim_image_end[];
+#define IMAGE_END ((uintptr_t)shim_image_end)
+#else
 extern char _end[];
+#define IMAGE_END ((uintptr_t)_end)
+#endif
 
 /*
  * Traverse Apple Device Tree buffer at base, finding every "device_type" == "cpu"
@@ -148,7 +159,7 @@ static uintptr_t adt_walk_fix_cpus(uintptr_t base, uintptr_t off, uintptr_t tota
 const char *loader_boot(uintptr_t dtb)
 {
 	uint64_t rd_start, rd_end;
-	uintptr_t emb = ((uintptr_t)_end + 0xfff) & ~0xfffUL;
+	uintptr_t emb = (IMAGE_END + 0xfff) & ~0xfffUL;
 
 	/*
 	 * Payload can ride either behind the shim in the kernel Image (embedded),

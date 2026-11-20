@@ -18,7 +18,7 @@ index 1724396..407ab8c 100644
 -	if (topology->boot_cpu->cpu_id != 0 || topology->boot_cpu->phys_id != 0) {
 -		panic("SWEET CPU: expected boot MPIDR 0 and logical CPU 0");
 +	/*
-+	 * topaz / santoni: the shim boots xnu on gold CPU 0x100.
++	 * topaz / wt86047: the shim boots xnu on gold CPU 0x100.
 +	 */
 +	if (topology->boot_cpu->cpu_id != 0 || topology->boot_cpu->phys_id != 0x100) {
 +		panic("SWEET CPU: expected boot MPIDR 0x100 and logical CPU 0, got 0x%x/%u",

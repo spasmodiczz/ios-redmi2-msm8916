@@ -212,7 +212,7 @@
  	unsigned int aff0 = mpidr & 0xff;
  	if (aff0 >= 16) {
  		panic("SWEET CPU: SGI target requires unsupported range selector");
-@@ -146,9 +229,25 @@
+@@ -146,9 +229,33 @@
  }
  
  kern_return_t
@@ -232,9 +232,17 @@
 +	__builtin_arm_dsb(DSB_SY);
 +	int32_t rc = sweet_psci_cpu_on(cpu->phys_id, entry, getCPUNumber());
 +	IOLog("SWEET CPU: cpu=%u PSCI CPU_ON rc=%d\n", getCPUNumber(), rc);
-+	/* cpu_start() discards PE_cpu_start's return; do not silently carry on. */
++	/*
++	 * msm8916 firmware implements no PSCI, so the SMC above returns
++	 * 0xFFFFFFFF and CPU_ON can never succeed on this SoC. Panicking here
++	 * would kill a single-core boot that is otherwise perfectly fine, so
++	 * report it and fail the start instead. Multi-core needs lk2nd +
++	 * qhypstub; single core is the supported configuration.
++	 */
 +	if (rc != 0) {
-+		panic("SWEET CPU: cpu=%u NOT alive: PSCI CPU_ON rc=%d", getCPUNumber(), rc);
++		IOLog("SWEET CPU: cpu=%u NOT alive: PSCI CPU_ON rc=%d (msm8916 has no PSCI)\n",
++		    getCPUNumber(), rc);
++		return KERN_FAILURE;
 +	}
 +	return KERN_SUCCESS;
  }
@@ -408,7 +416,7 @@
  #define SWEET                     1
  
 +/* Six homogeneous A55s; cpus=N is clamped here until A76/AMP is audited. */
-+#define SWEET_SMP_MAX_CPUS         6
++#define SWEET_SMP_MAX_CPUS         4
 +
  #define ARM_ARCH_TIMER
  #define __ARM_ARCH__              8
