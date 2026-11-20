@@ -164,6 +164,16 @@ jobs:
           bash build.sh 2>&1 | tee ../build.log
           ccache -s
 
+      # actions/cache only saves in its post step, which is skipped when the
+      # job fails -- and a failed round is exactly when the ccache is worth
+      # keeping. Save it explicitly.
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ env.MACHINE_CONFIG }}-${{ env.KERNEL_CONFIG }}-${{ github.run_id }}
+
       - name: Fail if any Santoni bring-up patch was skipped
         if: always()
         run: |
