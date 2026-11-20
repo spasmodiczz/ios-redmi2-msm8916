@@ -6,6 +6,14 @@
 #define FB_H		1280
 #define FB_STRIDE	2160		/* 720 * 3 bytes, r8g8b8 matching mainline simplefb */
 
+/*
+ * Measured on wt86047: LK leaves the panel scanning only lines 960..1279
+ * of the splash buffer, and those land on the top 320 panel rows. Anything
+ * drawn above line 960 is never displayed.
+ */
+#define FB_VIS_TOP	960
+#define FB_VIS_ROWS	320
+
 #define RED		0x00ff0000U
 #define BLUE		0x000000a0U
 #define WHITE		0x00ffffffU

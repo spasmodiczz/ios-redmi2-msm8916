@@ -134,8 +134,8 @@ int main(void)
 	assert(ba->Video.v_depth == 24);
 	assert(ba->Video.v_rowBytes == FB_STRIDE);
 	assert(ba->Video.v_width == FB_W);
-	assert(ba->Video.v_height == FB_H);
-	assert(ba->Video.v_baseAddr == FB_BASE);
+	assert(ba->Video.v_height == FB_VIS_ROWS);
+	assert(ba->Video.v_baseAddr == FB_BASE + FB_VIS_TOP * FB_STRIDE);
 	assert((ba_pa & 0xfff) == 0);
 	assert(ba->Revision == 2 && ba->Version == 2);
 	assert(strcmp(ba->CommandLine, "console=null santoni") == 0);
