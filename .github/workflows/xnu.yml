@@ -189,8 +189,8 @@ jobs:
           if [ ! -f build.log ]; then
             echo "no build.log (build never started)"; exit 0
           fi
-          if grep -E 'Skipping patch .*[0-9]{4}-(santoni|wt86047)' build.log; then
-            echo "::error::a Santoni bring-up patch was skipped by the build"
+          if grep -E 'Skipping patch .*patches/[0-9]{4}-' build.log; then
+            echo "::error::a numbered bring-up patch was skipped by the build"
             exit 1
           fi
           echo "no Santoni bring-up patch skipped"
