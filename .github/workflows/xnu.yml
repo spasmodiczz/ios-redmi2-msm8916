@@ -291,10 +291,16 @@ jobs:
         if: always()
         run: |
           rm -rf publish && mkdir -p publish
-          cp build.log publish/ 2>/dev/null || true
-          cp -R out publish/ 2>/dev/null || true
-          cp -R boot-kernel publish/ 2>/dev/null || true
-          rm -rf publish/out/kdk-libs 2>/dev/null || true
+          # GitHub rejects any single file over 100 MB, and kernel.*.unstripped
+          # is well past that -- that is what killed the first publish attempt.
+          # Only ship the bootable (stripped) kernels and a gzipped log.
+          for f in boot-kernel/kernel.*; do
+            case "$f" in
+              *.unstripped|*.dSYM) continue ;;
+            esac
+            cp "$f" publish/ 2>/dev/null || true
+          done
+          [ -f build.log ] && gzip -9c build.log > publish/build.log.gz || true
           ls -la publish || true
           cd publish
           git init -q .
