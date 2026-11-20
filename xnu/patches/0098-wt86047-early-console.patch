@@ -7,10 +7,10 @@ index 6928957..6b7d3a4 100644
  #include <kern/misc_protos.h>
  
 +#if defined(WT86047)
-+static volatile uint8_t *early_fb = (volatile uint8_t *)(uintptr_t)0x90001000;
++static volatile uint8_t *early_fb = (volatile uint8_t *)(uintptr_t)0x831FA800;
 +#define EARLY_FB early_fb
 +#define EARLY_W 720u
-+#define EARLY_H 1280u
++#define EARLY_H 320u
 +#define EARLY_STRIDE 2160u
 +#define EARLY_SCALE 1u
 +#define EARLY_CELL_W (8u * EARLY_SCALE)
