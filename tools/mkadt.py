@@ -20,8 +20,11 @@ SOC_BASE = 0x01000000
 GICD, GICD_SIZE = 0x0b000000, 0x1000
 GICC, GICC_SIZE = 0x0b002000, 0x1000
 # Continuous splash simplefb left lit by Qualcomm ABL (720x1280 24-bit BGR)
-FB, FB_SIZE = 0x90001000, 720 * 1280 * 3
-SWEET_ECID = 0x53414e544f4e4901  # 'SANTONI' + 1, synthetic
+# wt86047 (msm8916): DTB splash_region@83000000, 20 MiB. The santoni value
+# (0x90001000) is a different region on this SoC -- writing there draws
+# nothing and tramples memory xnu may use.
+FB, FB_SIZE = 0x83000000, 720 * 1280 * 3
+SWEET_ECID = 0x5754383630343721  # 'WT86047' + 1, synthetic
 FB_W, FB_H, FB_STRIDE = 720, 1280, 720 * 3
 TIMEBASE = 19200000
 VTIMER_INTID = 20
