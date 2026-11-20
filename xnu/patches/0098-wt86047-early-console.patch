@@ -15,7 +15,7 @@ index 6928957..6b7d3a4 100644
 +#define EARLY_SCALE 1u
 +#define EARLY_CELL_W (8u * EARLY_SCALE)
 +#define EARLY_CELL_H (16u * EARLY_SCALE)
-+#define EARLY_ROWS (EARLY_H / EARLY_CELL_H)
++#define EARLY_ROWS ((EARLY_H - 32u) / EARLY_CELL_H) /* keep the mark band */
 +#define EARLY_COLS (EARLY_W / EARLY_CELL_W)
 +
 +static inline void early_pixel24(unsigned int x, unsigned int y, uint32_t c) {
@@ -37,11 +37,30 @@ index 6928957..6b7d3a4 100644
  
  extern unsigned char iso_font[256 * 16];
  
-@@ -31,12 +52,20 @@
+@@ -31,12 +52,39 @@
  static void
  sweet_early_clear_row(void)
  {
 +#if defined(WT86047)
++	/*
++	 * sweet_early_putc advances early_row modulo EARLY_ROWS, so without this
++	 * the newest line lands on row 0 while the oldest lines stay at the
++	 * bottom: the window ends up holding two disconnected chunks of the log
++	 * and reads as garbled text. Shift the window up one cell on wrap so the
++	 * log always runs top-to-bottom in order, newest at the bottom.
++	 */
++	static unsigned int prev_row = ~0u;
++	if (prev_row != ~0u && early_row <= prev_row) {
++		for (unsigned int y = 0; y < (EARLY_ROWS - 1) * EARLY_CELL_H; y++) {
++			volatile uint8_t *dst = EARLY_FB + y * EARLY_STRIDE;
++			volatile uint8_t *src = dst + EARLY_CELL_H * EARLY_STRIDE;
++			for (unsigned int x = 0; x < EARLY_W * 3; x++) {
++				dst[x] = src[x];
++			}
++		}
++		early_row = EARLY_ROWS - 1;
++	}
++	prev_row = early_row;
 +	for (unsigned int y = 0; y < EARLY_CELL_H; y++) {
 +		for (unsigned int x = 0; x < EARLY_W; x++) {
 +			early_pixel24(x, early_row * EARLY_CELL_H + y, 0x00000000u);
