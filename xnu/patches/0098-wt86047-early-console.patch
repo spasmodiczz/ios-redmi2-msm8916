@@ -7,7 +7,7 @@ index 6928957..6b7d3a4 100644
  #include <kern/misc_protos.h>
  
 +#if defined(WT86047)
-+static volatile uint8_t *early_fb = (volatile uint8_t *)(uintptr_t)0x831FA800;
++static volatile uint8_t *early_fb = (volatile uint8_t *)(uintptr_t)0x831FA400;
 +#define EARLY_FB early_fb
 +#define EARLY_W 720u
 +#define EARLY_H 320u
@@ -126,7 +126,7 @@ index 6928957..6b7d3a4 100644
  {
  	sweet_early_mark(8, "leaving bootstrap TTBR0");
 +#if defined(WT86047)
-+	early_fb = (volatile uint8_t *)(uintptr_t)(base + 0x1FA800);
++	early_fb = (volatile uint8_t *)(uintptr_t)(base + 0x1FA400);
 +#else
  	early_fb = (volatile uint32_t *)(uintptr_t)base;
 +#endif

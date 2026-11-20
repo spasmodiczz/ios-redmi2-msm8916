@@ -6,8 +6,8 @@
  
 -#if defined(SWEET)
 +#if defined(WT86047)
-+	/* Stage 0: write white pixels to simplefb (0x831FA800) with MMU off */
-+	MOV64	x0, 0x831FA800
++	/* Stage 0: write white pixels to simplefb (0x831FA400) with MMU off */
++	MOV64	x0, 0x831FA400
 +	mov		w1, #-1
 +	mov		x2, #(720 * 32)
 +1:	str		w1, [x0], #4
@@ -56,7 +56,7 @@
 +
 +#if defined(WT86047)
 +	/* Stage 1: write blue block to simplefb after SCTLR_EL1.M MMU activation */
-+	MOV64	x0, (0x831FA800 + 720 * 32 * 4)
++	MOV64	x0, (0x831FA400 + 720 * 32 * 4)
 +	mov		w1, #0xff
 +	mov		x2, #(720 * 32)
 +1:	str		w1, [x0], #4
