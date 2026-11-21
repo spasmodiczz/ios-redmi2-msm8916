@@ -1,32 +1,34 @@
 --- a/bsd/vm/vm_unix.c
 +++ b/bsd/vm/vm_unix.c
-@@ -2720,6 +2720,32 @@
+@@ -2720,6 +2720,34 @@
  
  	/* map the file(s) into that shared region's submap */
  	kr = vm_shared_region_map_file(shared_region, files_count, sr_file_mappings);
 +#if defined(ARM64_BOARD_CONFIG_WT86047)
 +	/*
-+	 * SWEET: read the first bytes of the mapped cache back through the
-+	 * process's own address space. If the mapping is faithful this is the
-+	 * cache header ("dyld_v1   arm64"), which is the ground truth the
-+	 * faulting PC could not provide.
++	 * SWEET: read the first mapped bytes back through the process's own
++	 * address space. struct vm_shared_region is opaque to BSD, so ask the
++	 * exported accessor for the address of the first mapping instead of
++	 * poking sr_base_address.
 +	 */
 +	if (kr == KERN_SUCCESS) {
 +		extern void FlushPoC_Dcache(void);
 +		extern void InvalidatePoU_Icache(void);
-+		vm_offset_t sweet_base = (vm_offset_t)shared_region->sr_base_address;
++		mach_vm_offset_t sweet_first = 0;
 +		char sweet_head[17];
 +
 +		FlushPoC_Dcache();
 +		InvalidatePoU_Icache();
 +
-+		if (copyin((user_addr_t)sweet_base, sweet_head, 16) == 0) {
-+			sweet_head[16] = 0;
-+			printf("SWEET CACHE HEAD @0x%llx: [%.16s]\n",
-+			    (unsigned long long)sweet_base, sweet_head);
++		if (vm_shared_region_start_address(shared_region, &sweet_first, NULL) != KERN_SUCCESS) {
++			printf("SWEET CACHE FIRST: start_address failed\n");
++		} else if (copyin((user_addr_t)sweet_first, sweet_head, 16) != 0) {
++			printf("SWEET CACHE FIRST @0x%llx: copyin failed\n",
++			    (unsigned long long)sweet_first);
 +		} else {
-+			printf("SWEET CACHE HEAD @0x%llx: copyin failed\n",
-+			    (unsigned long long)sweet_base);
++			sweet_head[16] = 0;
++			printf("SWEET CACHE FIRST @0x%llx: [%.16s]\n",
++			    (unsigned long long)sweet_first, sweet_head);
 +		}
 +	}
 +#endif /* ARM64_BOARD_CONFIG_WT86047 */
