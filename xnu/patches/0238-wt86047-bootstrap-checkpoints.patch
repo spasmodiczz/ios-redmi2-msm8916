@@ -1,0 +1,33 @@
+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -769,24 +769,29 @@
+ #endif /* CONFIG_XNUPOST */
+ 
+ #ifdef  IOKIT
++	kprintf("WT86047: boot: PE_lockdown_iokit enter\n");
+ 	kernel_bootstrap_log("PE_lockdown_iokit");
+ 	PE_lockdown_iokit();
++	kprintf("WT86047: boot: PE_lockdown_iokit done\n");
+ #endif
+ 	/*
+ 	 * max_cpus must be nailed down by the time PE_lockdown_iokit() finishes,
+ 	 * at the latest
+ 	 */
+ 	vm_set_restrictions(machine_info.max_cpus);
++	kprintf("WT86047: boot: vm_set_restrictions done\n");
+ 
+ 
+ #if KPERF
+ 	kperf_init_early();
++	kprintf("WT86047: boot: kperf_init_early done\n");
+ #endif
+ 
+ 	/*
+ 	 *	Start the user bootstrap.
+ 	 */
+ #ifdef  MACH_BSD
++	kprintf("WT86047: boot: calling bsd_init\n");
+ 	bsd_init();
+ #endif
+ 
