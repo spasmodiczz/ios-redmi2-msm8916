@@ -65,6 +65,11 @@ def split_files(patch_text):
 def apply_file(path, hunks, dry):
     if os.path.exists(path):
         lines = open(path, encoding='utf-8', errors='surrogateescape').read().split('\n')
+        # split() leaves an empty string for a file that ends in a newline.
+        # Keeping it invents a trailing blank line that git apply will demand
+        # and not find, so drop it and re-add the newline when writing.
+        if lines and lines[-1] == '':
+            lines.pop()
     else:
         # A patch may create the file (0010 does); treat it as empty so the
         # hunk with an empty old side appends the whole body.
@@ -130,9 +135,11 @@ def main():
             continue
         if args.write:
             os.makedirs(os.path.dirname(target) or '.', exist_ok=True)
+            while result and result[-1] == '':
+                result.pop()
             with open(target, 'w', encoding='utf-8', errors='surrogateescape',
                       newline='') as fh:
-                fh.write('\n'.join(result))
+                fh.write('\n'.join(result) + '\n')
         if args.show:
             for h in f['hunks']:
                 lo = max(0, h['start'] - 1 - 3)
