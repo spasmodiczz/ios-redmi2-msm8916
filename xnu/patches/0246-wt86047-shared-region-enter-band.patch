@@ -1,0 +1,58 @@
+--- a/osfmk/vm/vm_shared_region.c
++++ b/osfmk/vm/vm_shared_region.c
+@@ -2248,6 +2248,37 @@
+  * one) for the desired environment, then mapping the VM sub map into the
+  * task's VM "map", with the appropriate level of pmap-nesting.
+  */
++#if defined(ARM64_BOARD_CONFIG_WT86047)
++/* SWEET: 0240 exports this; it draws into the band that never scrolls. */
++extern void sweet_early_fixed(int line, const char *s);
++
++/*
++ * Format without snprintf: this file includes no printf-family header, and a
++ * build failure here costs a full CI round.
++ */
++static void
++wt86047_sr_band(int line, const char *tag, unsigned int v)
++{
++	char b[40];
++	unsigned int i = 0;
++	const char *hex = "0123456789abcdef";
++	int sh;
++
++	while (tag[i] != 0 && i < 16) {
++		b[i] = tag[i];
++		i++;
++	}
++	b[i++] = '=';
++	b[i++] = '0';
++	b[i++] = 'x';
++	for (sh = 28; sh >= 0; sh -= 4) {
++		b[i++] = hex[(v >> sh) & 0xf];
++	}
++	b[i] = 0;
++	sweet_early_fixed(line, b);
++}
++#endif /* ARM64_BOARD_CONFIG_WT86047 */
++
+ kern_return_t
+ vm_shared_region_enter(
+ 	struct _vm_map          *map,
+@@ -2471,6 +2502,17 @@
+ 	assert(sr_size == 0);
+ 
+ done:
++#if defined(ARM64_BOARD_CONFIG_WT86047)
++	/*
++	 * SWEET: vm_map_exec() ignores this return value, so a failure here shows
++	 * up much later as "no shared region" from dyld's map syscall. Put the
++	 * code in the fixed band, which the console never scrolls away.
++	 */
++	if (kr != KERN_SUCCESS) {
++		wt86047_sr_band(0, "SRE", (unsigned int)kr);
++		wt86047_sr_band(1, "SRP", (unsigned int)VM_MAP_PAGE_SHIFT(map));
++	}
++#endif /* ARM64_BOARD_CONFIG_WT86047 */
+ 	if (kr == KERN_SUCCESS) {
+ 		/* let the task use that shared region */
+ 		vm_shared_region_set(task, shared_region);
