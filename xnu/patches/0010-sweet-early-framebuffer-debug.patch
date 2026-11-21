@@ -27,21 +27,10 @@ index e26a1d7..e3579f1 100644
  
  #if __arm64__
  	configure_timer_apple_regs();
-@@ -423,6 +427,18 @@ arm_init(
+@@ -423,6 +427,7 @@ arm_init(
  #endif
  
  	ml_parse_cpu_topology();
-+#if defined(WT86047)
-+	/*
-+	 * msm8916 has no PSCI, so the secondaries can never check in. In this port
-+	 * nothing calls ml_set_max_cpus() -- only AppleARMSMP and IOCPU do -- so
-+	 * max_cpus_initialized stays unset and kperf_init_early()'s
-+	 * ml_wait_max_cpus() sleeps forever, which is why bsd_init() was never
-+	 * reached. The ADT declares only cpu0, so finalize the count here.
-+	 */
-+	extern void ml_set_max_cpus(unsigned int);
-+	ml_set_max_cpus(1);
-+#endif
 +	sweet_early_mark(3, "ml_parse_cpu_topology done");
  
  
