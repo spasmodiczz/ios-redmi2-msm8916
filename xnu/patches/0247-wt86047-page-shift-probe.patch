@@ -1,0 +1,23 @@
+--- a/osfmk/vm/vm_shared_region.c
++++ b/osfmk/vm/vm_shared_region.c
+@@ -2285,6 +2285,20 @@
+ 	ipc_port_t              sr_handle;
+ 	vm_prot_t               cur_prot, max_prot;
+ 	vm_map_kernel_flags_t   vmk_flags;
++#if defined(ARM64_BOARD_CONFIG_WT86047)
++	/*
++	 * SWEET: PAGE_SHIFT is a runtime variable (PAGE_SHIFT_CONST), so whether
++	 * this board really runs 4 KiB or 16 KiB pages cannot be read off the
++	 * source. Surface it once, in the band that never scrolls, next to the
++	 * shared region's page shift. wt86047_sr_band() comes from 0246.
++	 */
++	static int wt86047_ps_reported = 0;
++
++	if (wt86047_ps_reported == 0) {
++		wt86047_ps_reported = 1;
++		wt86047_sr_band(0, "PS", (unsigned int)PAGE_SHIFT);
++	}
++#endif /* ARM64_BOARD_CONFIG_WT86047 */
+ 
+ 	SHARED_REGION_TRACE_DEBUG(
+ 		("shared_region: -> "
