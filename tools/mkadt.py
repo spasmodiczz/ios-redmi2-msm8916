@@ -129,7 +129,11 @@ def build(seed=None, qemu=False, native=False):
     # Aff0=0/Aff1=0. XNU requires the boot CPU to be logical CPU 0, so phys 0
     # must be cpu0. Listing santoni's 0x100-0x103 first would make the booting
     # core logical cpu4 and trip the cpu_id assertion in machine_routines.c.
-    cpu_phys_ids = [0x000, 0x001, 0x002, 0x003]
+    # Only cpu0 is declared: msm8916 has four A53s but no PSCI, so the
+    # secondaries can never be brought up. machine_info.max_cpus drives
+    # ml_wait_max_cpus(), which kperf_init_early() calls before bsd_init();
+    # declaring four CPUs there waits forever for cores that never check in.
+    cpu_phys_ids = [0x000]
     cpu_nodes = []
     for i, phys_id in enumerate(cpu_phys_ids):
         cluster = phys_id >> 8
