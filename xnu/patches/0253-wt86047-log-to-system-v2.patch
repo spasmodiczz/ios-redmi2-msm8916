@@ -1,0 +1,390 @@
+diff --git a/bsd/dev/wt86047_sdhci.c b/bsd/dev/wt86047_sdhci.c
+index c1f1db4..62d1ceb 100644
+--- a/bsd/dev/wt86047_sdhci.c
++++ b/bsd/dev/wt86047_sdhci.c
+@@ -319,10 +319,12 @@ static const struct wt86047_gcc_rate wt86047_gcc_rates[] = {
+ #define BOUNCE_SIZE             (1u << 20)
+ /*
+  * SYSTEM partition log area used by the persistent console log
+- * (bsd/dev/wt86047_sdhci.c + xnu/patches/0143): sector 0 carries the
+- * wt86047_log_header, sectors 1..8192 the 4 MiB circular ring.
++ * (bsd/dev/wt86047_sdhci.c + xnu/patches/0253): sector 0 carries the
++ * wt86047_log_header, sectors 1..32768 the 16 MiB circular ring. The
++ * partition is 100 MiB (0x6400000 = 204800 sectors) and nothing else uses it,
++ * so the area keeps ~8 boots of history instead of overwriting every boot.
+  */
+-#define WT86047_LOG_SYSTEM_BLOCKS 8193u
++#define WT86047_LOG_SYSTEM_BLOCKS 32769u
+ #define DMA_BOUNCE              0x0000
+ #define CMD_TIMEOUT_NS          (100ull * NSEC_PER_MSEC)
+ #define DATA_TIMEOUT_NS         (2ull * NSEC_PER_SEC)
+@@ -2805,29 +2807,75 @@ wt86047_sdhci_init(void)
+ }
+ 
+ /*
+- * Persistent console log ("wt86047log").
+- * Filming the phone screen is impractical for non-visual and early daemon
+- * panics. Every character that reaches the console (_cnputs) is appended to a
+- * lock-free 4 MiB circular ring buffer. A dedicated kernel thread wakes up
+- * periodically and commits dirty ring blocks to the idle SYSTEM partition
+- * (se.sys_first_block, 8193 sectors: 1 header + 8192 ring sectors).
++ * Persistent console log ("wt86047log"), v2.
+  *
+- * Flash layout on the SYSTEM partition:
+- *   Sector 0: struct wt86047_log_header (magic "WT86047LOG1", v1, 4 MiB, total, seq)
+- *   Sectors 1..8192: 8192 blocks (4 MiB) circular ring buffer
++ * Filming the phone screen is impractical for non-visual failures and cannot
++ * hold a boot, because the visible window is 18 lines. Every character that
++ * reaches the console (_cnputs) ends up in a lock-free 16 MiB circular ring;
++ * a kernel thread wakes up once a second and commits the dirty ring blocks to
++ * the idle SYSTEM partition.
++ *
++ * Flash layout (SYSTEM, se.sys_first_block, 32769 sectors = 1 + 32768):
++ *   Sector 0:     struct wt86047_log_header (v2, 60 bytes, see below)
++ *   Sectors 1..N: 32768 sectors (16 MiB) circular ring buffer
++ *
++ * v2 changes over v1 (0143), all of them to make a dump analysable:
++ *   - `total` is cumulative across boots. At start the previous header is
++ *     validated (magic, size, CRC32) and its `total` becomes the resume point,
++ *     so the ring is one continuous log across reboots and a single recovery
++ *     pull returns every retained boot instead of only the last one.
++ *   - Console output produced before this driver attaches cannot be placed in
++ *     the ring yet: the resume point is still unknown, and writing at offset 0
++ *     would overwrite the oldest retained bytes -- which are exactly the start
++ *     of the previous boot, where a failure usually happens. That output is
++ *     staged in a 256 KiB buffer and replayed into the ring at the resume
++ *     point, so no retained byte is ever destroyed by a new boot.
++ *   - A "=== WT86047LOG boot N ... ===" line is injected at every start and a
++ *     "[WT86047 t=12.345s]" marker once a second, giving the dump a time axis.
++ *   - The header carries `boots`, the uptime of the last flush, a cold-start
++ *     flag and a CRC32, so a torn header is detected instead of being decoded
++ *     as garbage.
+  *
+  * Writes go through wt86047_sdhci_write_log_blocks(), which is fenced to this
+- * 8193-sector area and does not need emmcrw=1, so the mounted HFS+ root on
++ * 32769-sector area and does not need emmcrw=1, so the mounted HFS+ root on
+  * USERDATA is never touched. Extracted from recovery via
+  * tools/sweet-log-pull.sh. Enabled only by boot-arg sweetlog=1; default off.
+  */
+-#define WT86047_LOG_SIZE          (4u << 20)
++#define WT86047_LOG_SIZE          (16u << 20)
+ #define WT86047_LOG_BLOCKS        (1 + WT86047_LOG_SIZE / SDHCI_BLOCK)
++#define WT86047_LOG_EARLY         (256u << 10)
++#define WT86047_LOG_MAGIC         "WT86047LOG2"
++#define WT86047_LOG_VERSION       2u
++#define WT86047_LOG_FLAG_COLD     0x00000001u  /* no valid v2 header: total restarts */
++#define WT86047_LOG_MARK_NS       (1ull * NSEC_PER_SEC)
++
++struct wt86047_log_header {
++	char magic[12];
++	uint32_t version;
++	uint32_t size;
++	uint64_t total;       /* stream bytes written since the area was formatted */
++	uint64_t seq;         /* flush counter of the current boot */
++	uint32_t boots;       /* boots since the area was formatted */
++	uint32_t flags;       /* WT86047_LOG_FLAG_* */
++	uint64_t last_uptime_ms; /* uptime of the last flush, ms */
++	uint32_t hdr_crc32;   /* over this struct with hdr_crc32 zeroed */
++	uint32_t pad;
++} __attribute__((packed));
+ 
+ static char wt86047_log_ring[WT86047_LOG_SIZE];
+ static _Atomic uint64_t wt86047_log_total;
++static uint64_t wt86047_log_flushed;   /* bytes already committed to flash */
++static uint64_t wt86047_log_mark;      /* mach_absolute_time() of the last marker */
++static uint32_t wt86047_log_boots = 1;
++static uint32_t wt86047_log_flags;
+ static int wt86047_log_chan;
+ 
++/* Console output staged until the eMMC driver knows the resume point. */
++static char wt86047_log_early[WT86047_LOG_EARLY];
++static uint32_t wt86047_log_early_len;
++static uint32_t wt86047_log_early_lost;
++static bool wt86047_log_ready;
++
+ /* Called for all console output from any context: never blocks */
+ void wt86047_log_append(const char *c, int size);
+ 
+@@ -2837,6 +2885,29 @@ wt86047_log_append(const char *c, int size)
+ 	if (size <= 0) {
+ 		return;
+ 	}
++
++	if (!wt86047_log_ready) {
++		/*
++		 * Before attach the resume point is unknown. Writing at offset 0
++		 * here would destroy the oldest retained bytes, so stage instead
++		 * and replay at start. Overflow is dropped and reported rather
++		 * than silently corrupting the ring.
++		 */
++		uint32_t room = WT86047_LOG_EARLY - wt86047_log_early_len;
++		uint32_t n = (uint32_t)MIN((uint32_t)size, room);
++
++		if (n != 0) {
++			memcpy(wt86047_log_early + wt86047_log_early_len, c, n);
++			wt86047_log_early_len += n;
++			os_atomic_add_orig(&wt86047_log_total, (uint64_t)n,
++			    relaxed);
++		}
++		if (n != (uint32_t)size) {
++			wt86047_log_early_lost += (uint32_t)size - n;
++		}
++		return;
++	}
++
+ 	uint64_t at = os_atomic_add_orig(&wt86047_log_total, (uint64_t)size,
+ 	    relaxed);
+ 
+@@ -2845,37 +2916,134 @@ wt86047_log_append(const char *c, int size)
+ 	}
+ }
+ 
+-struct wt86047_log_header {
+-	char magic[12];
+-	uint32_t version;
+-	uint32_t size;
+-	uint64_t total;
+-	uint64_t seq;
+-} __attribute__((packed));
++/*
++ * Minimal formatters. This file has no printf-family header (the existing
++ * printf() comes in through pexpert.h), so snprintf() is not declared here and
++ * the markers are assembled by hand instead of betting on an implicit
++ * declaration that current clang rejects.
++ */
++static char *
++wt86047_log_dec(char *p, uint64_t v)
++{
++	char tmp[24];
++	int n = 0;
++
++	do {
++		tmp[n++] = (char)('0' + (v % 10));
++		v /= 10;
++	} while (v != 0);
++	while (n > 0) {
++		*p++ = tmp[--n];
++	}
++	return p;
++}
++
++static char *
++wt86047_log_dec3(char *p, uint32_t v)
++{
++	*p++ = (char)('0' + (v / 100) % 10);
++	*p++ = (char)('0' + (v / 10) % 10);
++	*p++ = (char)('0' + v % 10);
++	return p;
++}
++
++static char *
++wt86047_log_hex(char *p, uint64_t v)
++{
++	static const char digits[] = "0123456789abcdef";
++	bool started = false;
++
++	for (int shift = 60; shift >= 0; shift -= 4) {
++		uint32_t d = (uint32_t)((v >> shift) & 0xf);
++
++		if (d != 0) {
++			started = true;
++		}
++		if (started || shift == 0) {
++			*p++ = digits[d];
++		}
++	}
++	return p;
++}
++
++static char *
++wt86047_log_str(char *p, const char *s)
++{
++	while (*s != 0) {
++		*p++ = *s++;
++	}
++	return p;
++}
++
++/* Milliseconds since boot, shared by the header and the in-stream markers. */
++static uint64_t
++wt86047_log_uptime_ms(void)
++{
++	uint64_t ns = 0;
++
++	absolutetime_to_nanoseconds(mach_absolute_time(), &ns);
++	return ns / NSEC_PER_MSEC;
++}
++
++/* One "[WT86047 t=12.345s]" marker per second, so the dump has a time axis. */
++static void
++wt86047_log_marker(void)
++{
++	uint64_t now = mach_absolute_time();
++	uint64_t since = 0, uptime;
++	char line[48];
++	char *p = line;
++
++	absolutetime_to_nanoseconds(now - wt86047_log_mark, &since);
++	if (wt86047_log_mark != 0 && since < WT86047_LOG_MARK_NS) {
++		return;
++	}
++	wt86047_log_mark = now;
++	uptime = wt86047_log_uptime_ms();
++
++	*p++ = '\n';
++	p = wt86047_log_str(p, "[WT86047 t=");
++	p = wt86047_log_dec(p, uptime / 1000);
++	*p++ = '.';
++	p = wt86047_log_dec3(p, (uint32_t)(uptime % 1000));
++	p = wt86047_log_str(p, "s]\n");
++	wt86047_log_append(line, (int)(p - line));
++}
+ 
+ static void
+ wt86047_log_thread(__unused void *arg, __unused wait_result_t wr)
+ {
+ 	uint64_t base = se.sys_first_block;
+-	uint64_t flushed = 0, seq = 0;
++	uint64_t seq = 0;
+ 	uint8_t bounce[SDHCI_BLOCK];
+ 
+-	printf("WT86047 LOG: console log flusher active on SYSTEM partition "
+-	    "(block 0x%llx..0x%llx, %u KiB)\n",
++	printf("WT86047 LOG: v2 flusher on SYSTEM, boot %u, ring %u KiB "
++	    "(block 0x%llx..0x%llx), resume 0x%llx\n",
++	    wt86047_log_boots, (WT86047_LOG_BLOCKS * SDHCI_BLOCK) >> 10,
+ 	    (unsigned long long)base,
+ 	    (unsigned long long)(base + WT86047_LOG_BLOCKS - 1),
+-	    (WT86047_LOG_BLOCKS * SDHCI_BLOCK) >> 10);
++	    (unsigned long long)wt86047_log_flushed);
++
+ 	for (;;) {
+ 		(void)tsleep(&wt86047_log_chan, PZERO, "wt86047log", hz);
+ 
+ 		uint64_t total = os_atomic_load(&wt86047_log_total, relaxed);
+-		if (total == flushed) {
++		if (total == wt86047_log_flushed) {
+ 			continue;
+ 		}
+-		uint64_t pos = total - flushed >= WT86047_LOG_SIZE ?
+-		    total - WT86047_LOG_SIZE : flushed;
++		/*
++		 * Only stamp time when there is something to commit, so an idle
++		 * system does not keep writing markers into the ring forever.
++		 */
++		wt86047_log_marker();
++		total = os_atomic_load(&wt86047_log_total, relaxed);
++
++		uint64_t pos = wt86047_log_flushed;
+ 		int error = 0;
+ 
++		if (total - pos > WT86047_LOG_SIZE) {
++			pos = total - WT86047_LOG_SIZE;
++		}
+ 		while (pos < total && !error) {
+ 			uint32_t off = (uint32_t)(pos % WT86047_LOG_SIZE);
+ 			uint32_t blk = off / SDHCI_BLOCK;
+@@ -2890,13 +3058,19 @@ wt86047_log_thread(__unused void *arg, __unused wait_result_t wr)
+ 			pos += (uint64_t)(blk + n) * SDHCI_BLOCK - off;
+ 		}
+ 		if (!error) {
+-			struct wt86047_log_header h = {
+-				.magic = "WT86047LOG1",
+-				.version = 1,
+-				.size = WT86047_LOG_SIZE,
+-				.total = total,
+-				.seq = ++seq,
+-			};
++			struct wt86047_log_header h;
++
++			bzero(&h, sizeof(h));
++			memcpy(h.magic, WT86047_LOG_MAGIC, sizeof(h.magic));
++			h.version = WT86047_LOG_VERSION;
++			h.size = WT86047_LOG_SIZE;
++			h.total = total;
++			h.seq = ++seq;
++			h.boots = wt86047_log_boots;
++			h.flags = wt86047_log_flags;
++			h.last_uptime_ms = wt86047_log_uptime_ms();
++			h.hdr_crc32 = wt86047_crc32((const uint8_t *)&h,
++			    sizeof(h));
+ 
+ 			bzero(bounce, SDHCI_BLOCK);
+ 			memcpy(bounce, &h, sizeof(h));
+@@ -2907,13 +3081,19 @@ wt86047_log_thread(__unused void *arg, __unused wait_result_t wr)
+ 			    "flusher\n", error);
+ 			return;
+ 		}
+-		flushed = total;
++		wt86047_log_flushed = total;
+ 	}
+ }
+ 
+ static void
+ wt86047_log_start(void)
+ {
++	uint64_t base = se.sys_first_block;
++	uint64_t resume = 0;
++	uint32_t carried = wt86047_log_early_len;
++	struct wt86047_log_header h;
++	uint8_t blk[SDHCI_BLOCK];
++	char *p, line[160];
+ 	uint32_t on = 0;
+ 	thread_t thread;
+ 
+@@ -2921,6 +3101,55 @@ wt86047_log_start(void)
+ 	if (!on || !se.log_ok) {
+ 		return;
+ 	}
++
++	wt86047_log_flags = WT86047_LOG_FLAG_COLD;
++	if (wt86047_sdhci_read_blocks(base, 1, blk) == 0) {
++		memcpy(&h, blk, sizeof(h));
++		if (memcmp(h.magic, WT86047_LOG_MAGIC, sizeof(h.magic)) == 0 &&
++		    h.version == WT86047_LOG_VERSION &&
++		    h.size == WT86047_LOG_SIZE && h.total > 0) {
++			uint32_t crc = h.hdr_crc32;
++
++			h.hdr_crc32 = 0;
++			if (crc == wt86047_crc32((const uint8_t *)&h,
++			    sizeof(h))) {
++				resume = h.total;
++				wt86047_log_boots = h.boots + 1;
++				wt86047_log_flags = 0;
++			}
++		}
++	}
++
++	/* Position the stream, then replay what was staged before attach. */
++	os_atomic_store(&wt86047_log_total, resume, relaxed);
++	wt86047_log_flushed = resume;
++	wt86047_log_ready = true;
++	if (carried != 0) {
++		wt86047_log_append(wt86047_log_early, (int)carried);
++	}
++
++	/* Boot boundary, so one dump can be split per boot. */
++	p = line;
++	*p++ = '\n';
++	p = wt86047_log_str(p, "=== WT86047LOG boot ");
++	p = wt86047_log_dec(p, wt86047_log_boots);
++	p = wt86047_log_str(p, wt86047_log_flags ? " cold" : " continued");
++	p = wt86047_log_str(p, ", resume 0x");
++	p = wt86047_log_hex(p, resume);
++	p = wt86047_log_str(p, ", carried ");
++	p = wt86047_log_dec(p, carried);
++	p = wt86047_log_str(p, " B, lost ");
++	p = wt86047_log_dec(p, wt86047_log_early_lost);
++	p = wt86047_log_str(p, " B, ring ");
++	p = wt86047_log_dec(p, WT86047_LOG_SIZE >> 10);
++	p = wt86047_log_str(p, " KiB ===\n");
++	wt86047_log_append(line, (int)(p - line));
++
++	printf("WT86047 LOG: SYSTEM console log v2 on block 0x%llx, boot %u, "
++	    "%s, resume 0x%llx, carried %u B\n", (unsigned long long)base,
++	    wt86047_log_boots, wt86047_log_flags ? "cold" : "continued",
++	    (unsigned long long)resume, carried);
++
+ 	if (kernel_thread_start(wt86047_log_thread, NULL, &thread) ==
+ 	    KERN_SUCCESS) {
+ 		thread_deallocate(thread);
