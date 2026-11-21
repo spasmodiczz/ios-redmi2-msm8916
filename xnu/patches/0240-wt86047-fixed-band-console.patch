@@ -1,7 +1,7 @@
 diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
 --- a/osfmk/arm64/sweet_early.c
 +++ b/osfmk/arm64/sweet_early.c
-@@ -251,4 +251,49 @@
+@@ -251,4 +251,52 @@
  	early_disabled = 1;
  	__asm__ volatile("dsb sy" ::: "memory");
  }
@@ -12,8 +12,11 @@ diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
 + * The log window holds 18 rows and a register dump fills 15 of them, so an
 + * ordinary line printed before a panic is scrolled out before it can be read.
 + * The bottom 32 px of the buffer is the stage-mark band: the pager never
-+ * touches it, so a line written here survives any amount of panic output.
-+ * Four 8 px rows; the glyph is sampled every other font row to fit.
++ * touches it, so text written here survives any amount of panic output.
++ *
++ * Two rows of the normal 8x16 font, not four rows of a folded glyph: folding
++ * clipped every stroke and made neighbouring rows merge into an unreadable
++ * smear on a photographed panel. Two clean rows beat four smudged ones.
 + */
 +void
 +sweet_early_fixed(int line, const char *s)
@@ -21,20 +24,20 @@ diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
 +	unsigned int y0;
 +	unsigned int col;
 +
-+	if (line < 0 || line > 3) {
++	if (line < 0 || line > 1) {
 +		return;
 +	}
-+	y0 = (EARLY_H > 32u ? EARLY_H - 32u : 0u) + (unsigned int)line * 8u;
-+	for (unsigned int y = 0; y < 8; y++) {
++	y0 = (EARLY_H > 32u ? EARLY_H - 32u : 0u) + (unsigned int)line * 16u;
++	for (unsigned int y = 0; y < 16; y++) {
 +		for (unsigned int x = 0; x < EARLY_W; x++) {
 +			early_pixel24(x, y0 + y, 0x00000000u);
 +		}
 +	}
 +	for (col = 0; s[col] != 0 && col * EARLY_CELL_W < EARLY_W; col++) {
 +		const unsigned char *glyph = iso_font + (unsigned char)s[col] * 16;
-+		for (unsigned int gy = 0; gy < 8; gy++) {
++		for (unsigned int gy = 0; gy < 16; gy++) {
 +			for (unsigned int gx = 0; gx < 8; gx++) {
-+				uint32_t pixel = (glyph[gy * 2] & (1u << gx)) ?
++				uint32_t pixel = (glyph[gy] & (1u << gx)) ?
 +				    0x00ffffffu : 0x00000000u;
 +				early_pixel24(col * EARLY_CELL_W + gx, y0 + gy, pixel);
 +			}
