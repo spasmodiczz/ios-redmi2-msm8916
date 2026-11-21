@@ -1,0 +1,32 @@
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -1105,6 +1105,29 @@
+ 		}
+ 	}
+ 
++#if defined(WT86047)
++	/*
++	 * SWEET: user-mode undefined instruction. The panic that follows only
++	 * carries a signal number, so log the first few occurrences verbatim:
++	 * the faulting PC, its caller and the instruction word are the only
++	 * data that identifies the culprit on an 18-line console.
++	 * instr was already fetched by COPYIN above, so nothing here can fault.
++	 */
++	{
++		static unsigned int sweet_sigill_seen = 0;
++
++		if (sweet_sigill_seen < 8) {
++			sweet_sigill_seen++;
++			printf("SWEET SIGILL #%u pc=%p lr=%p sp=%p instr=%08x\n",
++			    sweet_sigill_seen,
++			    (void *)get_saved_state_pc(state),
++			    (void *)get_saved_state_lr(state),
++			    (void *)get_saved_state_sp(state),
++			    instr);
++		}
++	}
++#endif /* WT86047 */
++
+ 	/*
+ 	 * Check for GDB breakpoint via illegal opcode.
+ 	 */

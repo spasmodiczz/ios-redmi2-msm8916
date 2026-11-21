@@ -46,7 +46,7 @@
 # "system" partition, and 0031 turns rootrw=1 into a read-write root).
 set -euo pipefail
 
-MAX_MIB=11742                  # 11,829,935,616 B / 1 MiB = 11281.6, minus slack
+MAX_MIB=${MAX_MIB:-14100}      # userdata 实测 0x37ADE7E00 = 14,946,303,488 B = 14,254 MiB
 MEASURE=${MEASURE:-0}
 XATTR=${XATTR:-0}
 NOJOURNAL=${NOJOURNAL:-0}
@@ -68,7 +68,7 @@ parse_mib() {
 SIZE_MIB=$(parse_mib "$size_arg")
 if (( SIZE_MIB < 512 || SIZE_MIB > MAX_MIB )); then
 	echo "mkiosroot: SIZE $SIZE_MIB MiB outside [512, $MAX_MIB]." >&2
-	echo "  userdata is 11,829,935,616 B = 11742 MiB; anything bigger cannot be flashed." >&2
+	echo "  userdata is 0x37ADE7E00 = 14,946,303,488 B = 14254 MiB (100MB system 扩容后)." >&2
 	exit 2
 fi
 
