@@ -1,7 +1,7 @@
 diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
 --- a/osfmk/arm64/sweet_early.c
 +++ b/osfmk/arm64/sweet_early.c
-@@ -127,5 +127,50 @@
+@@ -251,4 +251,49 @@
  	early_disabled = 1;
  	__asm__ volatile("dsb sy" ::: "memory");
  }
@@ -51,4 +51,3 @@ diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
 +}
 +#endif
  #endif /* SWEET */
- 
