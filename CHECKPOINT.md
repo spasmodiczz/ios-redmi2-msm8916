@@ -341,3 +341,43 @@ esr = 0x96000005   far = 0x158                  （NULL + 0x158 缺页）
 - `.workbuddy/memory/MEMORY.md` —— 长期要点与硬规则
 - `.workbuddy/memory/2026-11-21.md` —— 当天踩坑记录
 - 本文件 —— 接续入口；`STATE.md` / `HANDOFF-阶段2.md` —— 详细历史与交接
+
+---
+
+## 更新 2026-11-21 17:35 — **M3 达成：进了用户态，PID 1 在跑**
+
+### 证据
+
+`0242` 修掉早期取锁崩溃后，真机不再 panic，屏幕持续滚动：
+
+```
+SANTONI init: still alive (tick)
+WT86047 DIAG: rpm ch=1 open=1 L10=1 L5=1 rxst=2 ...
+WT86047 TOUCH: I2C NACK stage=write-address reg=0xbb byte=0 (total 11200)
+```
+
+`still alive (tick)` **不在内核镜像里**（python 全字节搜索确认），它在
+`build/wt86047/tools/santoni-init.S` —— mockfs 把它当 `/sbin/launchd` 交给 PID 1。
+该文件的注释写明：它跑起来即证明 **exec / 用户内核边界 / devfs / 控制台** 全部可用。
+**⇒ 阶段 2 的 M3 达成。**
+
+### 这一轮还没读到、下一轮要看的
+
+`init` 会 `open("/dev/remmcroot0")` + `pread(offset 1024, 512)` 读 eMMC 的 LBA 2 并打印
+前 8 字节。这条输出被刷屏挤掉了。
+
+| 下一张照片 | 含义 |
+|---|---|
+| 有 `init: eMMC …` 加 8 个十六进制字节 | `/dev/remmcroot0` 存在 ⇒ SDHCI 绑定成功、裸设备可用，eMMC 数据通路通 |
+| 没有这一行 | `open` 失败 ⇒ 阶段 2 的真正卡点在 SDHCI 绑定 |
+
+### 刷屏修复（`0243`，提交 `16287bc`）
+
+`bsd/dev/wt86047_sdhci.c` 里两处：`if ((tick % 200) == 0)` 的 `DIAG: rpm` 每 2 秒一条；
+`if (nack <= 5 || (nack % 500) == 0)` 的 `I2C NACK … (total 11xxx)` 的 total 无限增长。
+改为 DIAG 只在最初 6 秒、NACK 只打前 5 次，轮询本身保留。
+
+### 现在的判读窗口
+
+刷屏静音后，18 行日志 ≈ 90 秒历史（心跳 5 秒一条），所以**开机后 30~60 秒内拍照**
+就能同时看到 init 的 hello/PID、eMMC 探测结果和心跳。
