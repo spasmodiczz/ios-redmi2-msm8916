@@ -121,3 +121,49 @@ curl -s -x http://127.0.0.1:7897 "https://api.github.com/repos/spasmodiczz/ios-r
 ## 设备状态
 
 用户已完整备份 system/data，**允许改动系统分区**；但当前所有测试都用 `fastboot boot`，boot 分区未动。
+
+---
+
+## 更新 2026-11-21 14:50 — BT 曾经打印过，只是看不见
+
+### 决定性证据
+
+`strings kernel.development.wt86047 | grep -c "WT86047 BT"` → **1**。
+代码编进去了、`#if defined(WT86047)` 成立、`sweet_early_putc` 路径也是通的
+（寄存器转储完整显示、没有花屏、没有重启）。
+
+**问题纯粹是可见性**：窗口 18 行，panic 标题 2 行 + 寄存器转储 15 行 = 17 行，
+BT 行被顶出窗口。之前两轮在打印通道上找原因是方向错了。
+
+### 新方案（提交 `32cf187`）
+
+`0098` 新增导出函数 `sweet_early_fixed(int line, const char *s)`：
+
+- 画在缓冲区**底部 32 px 的阶段标记带**（`y = 288..319`），分页滚动**永不触碰该区域**
+- 8 px 行高（字形隔行取样），4 行，每行 90 列
+- `0239` 用它输出：line 0 = `BT pc=… sp=…`，line 1..3 = 最多 12 个候选返回地址
+
+预期画面（在寄存器转储**下方那条 32px 带子**里，而不是日志区）：
+
+```
+BT pc=fffffff00743804c sp=fffffff008507440
+fffffff007xxxxxx fffffff007xxxxxx fffffff007xxxxxx fffffff007xxxxxx
+...
+```
+
+### 新增验证工具
+
+`scripts/apply-patch-check.py` —— 把补丁**真正套到上游文件**并读改动区域：
+
+```bash
+python scripts/apply-patch-check.py <patch> upstream/xnu-xnu-8796.101.5 --show 8
+# --write  用于链式套用多个补丁
+```
+
+已用它链式验证 `0010 → 0012 → 0098 → 0140 → 0239`：`sweet_early.c` 的所有 hunk 全部命中
+（`0012`/`0140` 在 `pe_serial.c` 等文件的失败是缺 `0003` 前置，与本改动无关）。
+它支持新建文件（`0010` 创建 `sweet_early.c`/`.h`），这是 `dryrun-patch.sh` 做不到的。
+
+### 从此轮次起的判读方式改变
+
+panic 时**先看底部 32px 带子**，再看日志区。日志区只有 18 行且会被 panic 占满。
