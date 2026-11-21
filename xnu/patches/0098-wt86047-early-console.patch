@@ -2,7 +2,7 @@ diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
 index 6928957..6b7d3a4 100644
 --- a/osfmk/arm64/sweet_early.c
 +++ b/osfmk/arm64/sweet_early.c
-@@ -11,6 +11,45 @@
+@@ -11,6 +11,40 @@
  #include <stdint.h>
  #include <kern/misc_protos.h>
  
@@ -14,12 +14,7 @@ index 6928957..6b7d3a4 100644
 +#define EARLY_STRIDE 2160u
 +#define EARLY_SCALE 1u
 +#define EARLY_CELL_W (8u * EARLY_SCALE)
-+/*
-+ * The font is 8x16 and only 320 panel rows are visible, so a 16 px cell leaves
-+ * 18 usable rows: a panic backtrace loses most frames off the top. Fold the
-+ * glyph 2:1 (one dest row per two font rows) for an 8 px cell, which fits 36.
-+ */
-+#define EARLY_CELL_H 8u
++#define EARLY_CELL_H (16u * EARLY_SCALE)
 +#define EARLY_ROWS ((EARLY_H - 32u) / EARLY_CELL_H) /* keep the mark band */
 +/*
 + * Measured on the panel: post-TTBR0 output rendered 8 cells right of the
@@ -96,13 +91,12 @@ index 6928957..6b7d3a4 100644
  }
  
  void
-@@ -64,6 +93,16 @@
+@@ -64,6 +93,15 @@
  	const unsigned char *glyph = iso_font + (unsigned char)c * 16;
  	for (unsigned int gy = 0; gy < 16; gy++) {
  		for (unsigned int sy = 0; sy < EARLY_SCALE; sy++) {
 +#if defined(WT86047)
-+			unsigned int py = early_row * EARLY_CELL_H +
-+			    (gy * EARLY_SCALE + sy) / 2;
++			unsigned int py = early_row * EARLY_CELL_H + gy * EARLY_SCALE + sy;
 +			for (unsigned int gx = 0; gx < 8; gx++) {
 +				uint32_t pixel = (glyph[gy] & (1u << gx)) ? 0x00ffffffu : 0x00000000u;
 +				for (unsigned int sx = 0; sx < EARLY_SCALE; sx++) {

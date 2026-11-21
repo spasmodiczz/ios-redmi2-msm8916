@@ -1,0 +1,42 @@
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -518,6 +518,38 @@
+ 	}
+ 		OS_FALLTHROUGH; // panic if we return from the debugger
+ 	default:
++#if defined(WT86047)
++	/*
++	 * The early console's panic path prints the reason and the register file and
++	 * then halts, so XNU never reaches its own backtrace printer. Walk the frame
++	 * pointer chain first; two frames per line keeps it inside the 18 rows this
++	 * panel can show.
++	 */
++	{
++		extern int printf(const char *, ...);
++		uint64_t bt_fp = get_saved_state_fp(state);
++		uint64_t bt_pc = get_saved_state_pc(state);
++		printf("WT86047 BT pc=%llx fp=%llx\n",
++		    (unsigned long long)bt_pc, (unsigned long long)bt_fp);
++		for (unsigned int bt_i = 0; bt_i < 14; bt_i++) {
++			if (bt_fp < 0xfffffff000000000ULL || (bt_fp & 7) != 0) {
++				break;
++			}
++			uint64_t bt_next = *(volatile uint64_t *)bt_fp;
++			uint64_t bt_ret = *(volatile uint64_t *)(bt_fp + 8);
++			printf("BT%u=%llx", bt_i, (unsigned long long)bt_ret);
++			if ((bt_i & 1) != 0) {
++				printf("\n");
++			}
++			if (bt_next <= bt_fp) {
++				break;
++			}
++			bt_fp = bt_next;
++		}
++		printf("\n");
++	}
++#endif
++
+ 		panic_with_thread_kernel_state("Synchronous exception taken while SP1 selected", state);
+ 	}
+ }
