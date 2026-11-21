@@ -413,5 +413,23 @@ v2 头 CRC 不符时会打印 `MISMATCH (half-written header?)` 但照常解码�
 | 解码器单测（合成 v2 / v1 / 空区 / CRC 错 / wrap / 16 MiB 回环） | 16 项全过 |
 | 环形模型单测（3 次启动连续、20 次启动 wrap、暂存溢出计数、resume 定位） | 7 项全过 |
 
-**尚未验证**：真机上的一段完整启动日志。判读点：`WT86047 LOG: SYSTEM console log v2 on block ...`
-与固定带/日志区的 `=== WT86047LOG boot N ... ===`。
+### 10.6 CI 与镜像级验证（2026-11-22 03:2x）
+
+CI run **`44940036307`**（`e5e850f`）**conclusion = success**，9 分钟。逐项核对：
+
+| 检查 | 结果 |
+|---|---|
+| `0253` 是否被应用 | `build.log:316  ⇒ Applying patch: .../dxb/patches/0253-wt86047-log-to-system-v2.patch`，**不在** `Skipping patch` 名单里 |
+| `build.log` 中的 `error:` | 共 11 条，**全部**来自 blacktop 自带的 `iobuffermemd_monterey` / `skywalk_sonoma` / `syntax_checker_sonoma` / `TrustCache` 四个补丁的 skip 路径，与本补丁无关 |
+| `wt86047_sdhci.c` 新增告警 | 仅 2 条 `-Wdeclaration-after-statement`（第 2902/2911 行）。该类告警在本文件**已有约 50 条**，XNU 用 `-Wno-error=declaration-after-statement` 降级，不是回归 |
+| 符号进入镜像 | `llvm-nm` 可见 `_wt86047_log_append`、`_wt86047_log_early`、`_wt86047_log_early_lost`、`_wt86047_log_flushed`、`_wt86047_log_thread`、`_wt86047_log_total` |
+| 字符串进入镜像 | 镜像内有 `WT86047LOG2`、`WT86047 LOG: v2 flusher`、`SYSTEM console log v2 on block`；`WT86047LOG1` 已为 0（v1 魔数被替换，符合预期） |
+| bss 实际落点 | `_wt86047_log_ring = 0xfffffff0080dafd4`，`_wt86047_log_early = 0xfffffff00809afc8`，都在内核 bss 段内，无越界迹象 |
+
+**一处需要留意的细节**：`=== WT86047LOG boot ` 这个字面量在镜像里**不连续**——反汇编显示它被拆成了
+`=== WT86047LOG ` 与 `boot` 两段常量，尾随空格是否单独存放取决于链接器布局。所以解码器改为用正则
+`^=== WT86047LOG boot\s*(\d+)` 匹配，不再依赖那个空格（提交 `74ccc7d`，纯工具改动，不触发内核 CI）。
+
+**尚未验证**：真机上的一段完整启动日志。判读点：日志区出现
+`WT86047 LOG: SYSTEM console log v2 on block 0x..., boot 1, cold, resume 0x0, carried N B`，
+其后紧跟 `=== WT86047LOG boot 1 cold, ... ===` 边界行。
