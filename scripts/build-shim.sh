@@ -134,12 +134,17 @@ fi
 #                se.writable=false（没 emmcrw）→ 任何写路径都返回 EROFS，
 #                sweetlog 也未启用 → 真正的零块写入。阶段 2 的 Gate-4 与
 #                rootfs 首启都用这一档。
+#   emmcroot0    + rd-emmc-ro-log：根同样只读（无 emmcrw/rootrw，HFS+ 不会被改），
+#                但启用 sweetlog，只写 system 分区开头 32769 扇区。
+#                0142 的 write_log_blocks() 自带栅栏、不看 emmcrw，所以这是
+#                "取日志但不动根文件系统" 的唯一组合。日志通道验证用这一档。
 #   emmcroot0    + rd-emmc：emmcrw=1 才允许写，且被 fence 限制在 userdata
 #                分区内；rootrw=1 让 HFS+ 根以读写挂载（0031，WT86047 有效）。
 case "$RD_MODE" in
-	--rd-emmc)    CMDLINE="$CMDLINE rd=emmcroot0 emmcrw=1 rootrw=1" ;;
-	--rd-emmc-ro) CMDLINE="$CMDLINE rd=emmcroot0" ;;
-	*)            CMDLINE="$CMDLINE rd=md0" ;;
+	--rd-emmc)        CMDLINE="$CMDLINE rd=emmcroot0 emmcrw=1 rootrw=1" ;;
+	--rd-emmc-ro)     CMDLINE="$CMDLINE rd=emmcroot0" ;;
+	--rd-emmc-ro-log) CMDLINE="$CMDLINE rd=emmcroot0 sweetlog=1" ;;
+	*)                CMDLINE="$CMDLINE rd=md0" ;;
 esac
 
 # ---------------------------------------------------------------- payload
