@@ -2,7 +2,7 @@ diff --git a/osfmk/arm64/sweet_early.c b/osfmk/arm64/sweet_early.c
 index 6928957..6b7d3a4 100644
 --- a/osfmk/arm64/sweet_early.c
 +++ b/osfmk/arm64/sweet_early.c
-@@ -11,6 +11,32 @@
+@@ -11,6 +11,40 @@
  #include <stdint.h>
  #include <kern/misc_protos.h>
  
@@ -22,6 +22,14 @@ index 6928957..6b7d3a4 100644
 + * 71 px past the right edge and loses its last 8 characters. Cap the wrap at
 + * 81 columns (648 px) so every line fits inside the 720 px row.
 + */
++/*
++ * Measured on the panel: post-TTBR0 output lands 74 px (9 cells, 222 bytes)
++ * to the right of where the pre-TTBR0 output lands, and the stage-mark band
++ * and the text are both displaced by the same amount. Pull the post-TTBR0
++ * base back by that bias so the text starts at column 0. If the log ever
++ * loses its first ~9 characters instead, this value is too large.
++ */
++#define WT86047_FB_X_BIAS 222u
 +#define EARLY_COLS 81u
 +
 +static inline void early_pixel24(unsigned int x, unsigned int y, uint32_t c) {
@@ -148,7 +156,7 @@ index 6928957..6b7d3a4 100644
 +	 * block base first, then add the row-960 offset.
 +	 */
 +	early_fb = (volatile uint8_t *)(uintptr_t)
-+	    ((base & ~(uint64_t)0x1FFFFFULL) + 0x1FA400);
++	    ((base & ~(uint64_t)0x1FFFFFULL) + 0x1FA400 - WT86047_FB_X_BIAS);
 +#else
  	early_fb = (volatile uint32_t *)(uintptr_t)base;
 +#endif
