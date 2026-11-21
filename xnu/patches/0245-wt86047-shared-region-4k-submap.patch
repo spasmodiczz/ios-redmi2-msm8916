@@ -1,0 +1,24 @@
+--- a/osfmk/vm/vm_shared_region.c
++++ b/osfmk/vm/vm_shared_region.c
+@@ -786,6 +786,21 @@
+ 				vm_map_set_page_shift(sub_map, FOURK_PAGE_SHIFT);
+ 			}
+ #endif /* __ARM_MIXED_PAGE_SIZE__ */
++#if defined(ARM64_BOARD_CONFIG_WT86047)
++			/*
++			 * SWEET: Santoni translates 4 KiB pages, so a 64-bit user
++			 * process uses 4 KiB pages too. The 16 KiB assignment above
++			 * assumes arm64 user space is 16 KiB and is only undone
++			 * under __ARM_MIXED_PAGE_SIZE__ (macOS). Leaving the shared
++			 * region's sub map at 16 KiB makes vm_map round the 4 KiB
++			 * aligned file offsets dyld passes when mapping the dyld
++			 * shared cache, so the text mapped at a given address is not
++			 * the text stored at that offset in the cache file. The
++			 * first branch through the cache then lands on data and the
++			 * process dies on an illegal instruction.
++			 */
++			vm_map_set_page_shift(sub_map, FOURK_PAGE_SHIFT);
++#endif /* ARM64_BOARD_CONFIG_WT86047 */
+ 		} else {
+ 			sub_map = VM_MAP_NULL;
+ 		}
