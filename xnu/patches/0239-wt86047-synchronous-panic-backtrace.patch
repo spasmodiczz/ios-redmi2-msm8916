@@ -1,37 +1,39 @@
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
-@@ -518,6 +518,38 @@
+@@ -518,6 +518,40 @@
  	}
  		OS_FALLTHROUGH; // panic if we return from the debugger
  	default:
 +#if defined(WT86047)
 +	/*
 +	 * The early console's panic path prints the reason and the register file and
-+	 * then halts, so XNU never reaches its own backtrace printer. Walk the frame
-+	 * pointer chain first; two frames per line keeps it inside the 18 rows this
-+	 * panel can show.
++	 * then halts, so XNU never reaches its own backtrace printer.
++	 *
++	 * Do not walk the frame pointer chain here: fp may point at an unmapped VA
++	 * and a fault inside the exception handler becomes a double fault, which the
++	 * watchdog turns into a silent reboot. Only read the current stack instead
++	 * (sp .. sp+512 is mapped by definition) and keep the words that look like
++	 * return addresses into kernel text.
 +	 */
 +	{
 +		extern int printf(const char *, ...);
-+		uint64_t bt_fp = get_saved_state_fp(state);
-+		uint64_t bt_pc = get_saved_state_pc(state);
-+		printf("WT86047 BT pc=%llx fp=%llx\n",
-+		    (unsigned long long)bt_pc, (unsigned long long)bt_fp);
-+		for (unsigned int bt_i = 0; bt_i < 14; bt_i++) {
-+			if (bt_fp < 0xfffffff000000000ULL || (bt_fp & 7) != 0) {
++		uint64_t bt_sp = get_saved_state_sp(state);
++		unsigned int bt_n = 0;
++		printf("WT86047 BT pc=%llx sp=%llx\n",
++		    (unsigned long long)get_saved_state_pc(state),
++		    (unsigned long long)bt_sp);
++		for (unsigned int bt_i = 0; bt_i < 64 && bt_n < 18; bt_i++) {
++			if (bt_sp < 0xfffffff000000000ULL || (bt_sp & 7) != 0) {
 +				break;
 +			}
-+			uint64_t bt_next = *(volatile uint64_t *)bt_fp;
-+			uint64_t bt_ret = *(volatile uint64_t *)(bt_fp + 8);
-+			printf("BT%u=%llx", bt_i, (unsigned long long)bt_ret);
-+			if ((bt_i & 1) != 0) {
-+				printf("\n");
++			uint64_t bt_v = *(volatile uint64_t *)(bt_sp + bt_i * 8);
++			if (bt_v >= 0xfffffff007004000ULL && bt_v < 0xfffffff007b7c000ULL) {
++				printf("%llx ", (unsigned long long)bt_v);
++				if ((++bt_n & 1) == 0) {
++					printf("\n");
++				}
 +			}
-+			if (bt_next <= bt_fp) {
-+				break;
-+			}
-+			bt_fp = bt_next;
 +		}
 +		printf("\n");
 +	}
