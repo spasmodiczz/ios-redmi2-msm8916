@@ -226,3 +226,70 @@ cd /d/wt-tmp/fullN && git init -q . && \
 
 **通用结论**：这块屏只有 320 行可见。任何「压缩字形换取行数」的做法都会牺牲可读性，
 而可读性才是目的。宁可少打，不要糊。
+
+---
+
+## 更新 2026-11-21 16:15 — 阶段 2 第二个根因：socd trace 在无线程时崩
+
+### 先说方法：这次是 BT 地址直接定位的
+
+固定带里读出的四个地址（`5033d65` 的 2 行 16px 版本，字清晰可读）：
+
+```
+BT pc=fffffff00743804c sp=fffffff008587360
+fffffff0072c236c fffffff00734d548 fffffff0070(8|0)67c fffffff007b17204
+```
+
+`python scripts/symbolize.py <addr...>` 结果：
+
+| 地址 | 符号 | 意义 |
+|---|---|---|
+| `…72c236c` | `debug_is_current_cpu_in_panic_state + 0xb` | **最靠近 sp = 真正的调用者** |
+| `…734d548` | `socd_client_trace + 0xc7` | 它的调用者 |
+| `…708?67c` | `__doprnt.digits + 0x2xxxx` | 符号表在此区间无条目，忽略 |
+| `…7b17204` | `machine_switch_context.cold.1 + 0x13` | 栈上残留，说明上下文切换过 |
+
+### 根因
+
+```c
+osfmk/kern/socd_client.c:127
+	if (!debug_is_current_cpu_in_panic_state()) {
+		KDBG(debugid, arg1, arg2, arg3, arg4);
+	}
+
+osfmk/kern/debug.c:714
+debug_is_current_cpu_in_panic_state(void)
+{
+	return current_debugger_state()->db_entry_count > 0;
+}
+
+osfmk/kern/debug.c:190
+static struct debugger_state PERCPU_DATA(debugger_state);
+static inline struct debugger_state *current_debugger_state(void)
+{
+	return PERCPU_GET(debugger_state);      /* → current_percpu_base() */
+}
+```
+
+`PERCPU_GET` → `current_percpu_base()` → `current_thread()->machine.pcpu_data_base`。
+启动早期 TPIDR_EL1 还没有线程 → `current_thread()` 为 NULL → 读 `+0x220` 缺页。
+**而这次缺页发生在异常处理内部**，所以双重故障、看门狗复位。
+
+`0x220` 就是 `machine.pcpu_data_base` 在 thread 结构里的偏移，与 `far = 0x220` 完全吻合。
+
+### 修复（`853d056`，补丁 `0241`）
+
+在 `socd_client_trace()` 入口判 `current_thread() == NULL` 直接 return。
+不修 `debug_is_current_cpu_in_panic_state()` 是因为：它返回 FALSE 后紧接着的 `KDBG()`
+同样依赖 per-CPU 状态，只挡一半等于把崩溃点后移。整条 trace 路径都没有意义 ——
+第一个线程还不存在，没有可追踪的东西。
+
+### 诊断方法沉淀
+
+1. panic 摘要写进**底部 32px 固定带**（`0240`），2 行 × 16px 正常字形。
+2. 拍照 → 直接读 `BT pc=… sp=…` 和地址行。
+3. `python scripts/symbolize.py <addr...>` → 函数名（返回地址按 symbol-1 解析）。
+4. 拿最靠近 sp 的那个函数去源码里查，通常就是元凶。
+
+`symbolize.py` 的已知缺陷：`__TEXT_EXEC` 里有些区间没有独立符号，会落到
+`__doprnt.digits + 大偏移` 这种无意义结果。忽略这类行，不要被误导。
