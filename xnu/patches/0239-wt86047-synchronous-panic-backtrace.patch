@@ -1,14 +1,14 @@
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
-@@ -503,6 +503,35 @@
+@@ -502,6 +502,35 @@
+ 	    state->pc, state->cpsr, state->esr, state->far);
  }
  
- void
 +#if defined(WT86047)
 +/*
 + * Panic-safe output. kprintf (printf) can take locks and read per-CPU state,
-+ * and this handler runs exactly when that is not safe: calling it here made the
++ * and this handler runs exactly when that is unsafe: calling it there made the
 + * first abort recurse inside the handler, so the board double faulted and the
 + * watchdog reset it instead of halting with the dump on screen.
 + */
@@ -34,9 +34,9 @@ diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
 +}
 +#endif
 +
+ void
  sleh_synchronous_sp1(arm_context_t *context, uint32_t esr, vm_offset_t far __unused)
  {
- 	esr_exception_class_t  class = ESR_EC(esr);
 @@ -518,6 +547,42 @@
  	}
  		OS_FALLTHROUGH; // panic if we return from the debugger
