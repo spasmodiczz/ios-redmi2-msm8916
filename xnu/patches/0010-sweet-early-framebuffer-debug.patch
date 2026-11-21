@@ -27,7 +27,7 @@ index e26a1d7..e3579f1 100644
  
  #if __arm64__
  	configure_timer_apple_regs();
-@@ -423,7 +427,18 @@ arm_init(
+@@ -423,6 +427,18 @@ arm_init(
  #endif
  
  	ml_parse_cpu_topology();
@@ -42,7 +42,7 @@ index e26a1d7..e3579f1 100644
 +	extern void ml_set_max_cpus(unsigned int);
 +	ml_set_max_cpus(1);
 +#endif
- 	sweet_early_mark(3, "ml_parse_cpu_topology done");
++	sweet_early_mark(3, "ml_parse_cpu_topology done");
  
  
  	master_cpu = ml_get_boot_cpu_number();
