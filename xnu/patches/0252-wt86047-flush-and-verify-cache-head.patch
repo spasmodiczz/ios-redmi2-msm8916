@@ -1,0 +1,35 @@
+--- a/bsd/vm/vm_unix.c
++++ b/bsd/vm/vm_unix.c
+@@ -2720,6 +2720,32 @@
+ 
+ 	/* map the file(s) into that shared region's submap */
+ 	kr = vm_shared_region_map_file(shared_region, files_count, sr_file_mappings);
++#if defined(ARM64_BOARD_CONFIG_WT86047)
++	/*
++	 * SWEET: read the first bytes of the mapped cache back through the
++	 * process's own address space. If the mapping is faithful this is the
++	 * cache header ("dyld_v1   arm64"), which is the ground truth the
++	 * faulting PC could not provide.
++	 */
++	if (kr == KERN_SUCCESS) {
++		extern void FlushPoC_Dcache(void);
++		extern void InvalidatePoU_Icache(void);
++		vm_offset_t sweet_base = (vm_offset_t)shared_region->sr_base_address;
++		char sweet_head[17];
++
++		FlushPoC_Dcache();
++		InvalidatePoU_Icache();
++
++		if (copyin((user_addr_t)sweet_base, sweet_head, 16) == 0) {
++			sweet_head[16] = 0;
++			printf("SWEET CACHE HEAD @0x%llx: [%.16s]\n",
++			    (unsigned long long)sweet_base, sweet_head);
++		} else {
++			printf("SWEET CACHE HEAD @0x%llx: copyin failed\n",
++			    (unsigned long long)sweet_base);
++		}
++	}
++#endif /* ARM64_BOARD_CONFIG_WT86047 */
+ 	if (kr != KERN_SUCCESS) {
+ 		SHARED_REGION_TRACE_ERROR(("shared_region: %p [%d(%s)] map(): "
+ 		    "vm_shared_region_map_file() failed kr=0x%x\n",
