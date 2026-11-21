@@ -143,7 +143,7 @@ index 6928957..6b7d3a4 100644
  	__asm__ volatile("dsb sy" ::: "memory");
  	sweet_early_string("SWEET EARLY ");
  	if (stage >= 10) {
-@@ -129,7 +176,64 @@
+@@ -129,7 +176,19 @@
  sweet_early_relocate(uint64_t base)
  {
  	sweet_early_mark(8, "leaving bootstrap TTBR0");
@@ -163,48 +163,3 @@ index 6928957..6b7d3a4 100644
  	__asm__ volatile("dsb sy" ::: "memory");
  	sweet_early_mark(9, "kernel framebuffer VA live");
  }
-+#if defined(WT86047)
-+/*
-+ * Fixed-position text for panic summaries.
-+ *
-+ * The log window holds 18 rows and a register dump fills 15 of them, so
-+ * anything printed as an ordinary line is scrolled off before it can be read.
-+ * The bottom 32 px of the buffer is the stage-mark band: the pager never
-+ * touches it, so a line written here survives the dump. Four 8 px rows; the
-+ * glyph is sampled every other font row to fit.
-+ */
-+void
-+sweet_early_fixed(int line, const char *s)
-+{
-+	unsigned int y0;
-+	unsigned int col;
-+
-+	if (line < 0 || line > 3) {
-+		return;
-+	}
-+	y0 = (EARLY_H > 32u ? EARLY_H - 32u : 0u) + (unsigned int)line * 8u;
-+	for (unsigned int y = 0; y < 8; y++) {
-+		for (unsigned int x = 0; x < EARLY_W; x++) {
-+			early_pixel24(x, y0 + y, 0x00000000u);
-+		}
-+	}
-+	for (col = 0; s[col] != 0 && col * EARLY_CELL_W < EARLY_W; col++) {
-+		const unsigned char *glyph = iso_font + (unsigned char)s[col] * 16;
-+		for (unsigned int gy = 0; gy < 8; gy++) {
-+			for (unsigned int gx = 0; gx < 8; gx++) {
-+				uint32_t pixel = (glyph[gy * 2] & (1u << gx)) ?
-+				    0x00ffffffu : 0x00000000u;
-+				early_pixel24(col * EARLY_CELL_W + gx, y0 + gy, pixel);
-+			}
-+		}
-+	}
-+	__asm__ volatile("dsb sy" ::: "memory");
-+}
-+#else
-+void
-+sweet_early_fixed(int line, const char *s)
-+{
-+	(void)line;
-+	(void)s;
-+}
-+#endif
