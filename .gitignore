@@ -1,0 +1,16 @@
+# 派生/体积大的内容：可由 fetch + 打包重建，不入库
+build/
+kernel-out*/
+runlog/
+upstream/
+
+# 独立仓库（patch 集在 GitHub 上单独管理，SHA 记录在 ios-santoni.rev）
+ios-santoni/
+
+# 二进制与临时产物
+*.img
+*.zip
+*.dtb
+ci-watch*.log
+*.json
+!board/*.dtb

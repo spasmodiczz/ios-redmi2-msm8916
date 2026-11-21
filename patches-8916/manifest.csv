@@ -1,0 +1,237 @@
+﻿原补丁,输出补丁,动作,改动行数,理由
+0001-new-clang-drop-removed-auto-var-init-flag.patch,0001-new-clang-drop-removed-auto-var-init-flag.patch,adapt,0,通用补丁
+0002-new-clang-backport-UIO_STACKBUF.patch,0002-new-clang-backport-UIO_STACKBUF.patch,adapt,0,通用补丁
+0003-sweet-framebuffer-serial-console.patch,0003-sweet-framebuffer-serial-console.patch,adapt,0,通用补丁
+0004-sweet-machine-config.patch,0004-sweet-machine-config.patch,adapt,1,通用补丁
+0005-non-pac-build-fixes.patch,0005-non-pac-build-fixes.patch,adapt,0,通用补丁
+0006-sweet-master-config-open-source-asm-pmap.patch,0006-sweet-master-config-open-source-asm-pmap.patch,adapt,0,通用补丁
+0007-sweet-stub-apple-internal-headers.patch,0007-sweet-stub-apple-internal-headers.patch,adapt,0,通用补丁
+0008-sweet-fill-closed-lib-gaps-kpc-stub.patch,0008-sweet-fill-closed-lib-gaps-kpc-stub.patch,adapt,0,通用补丁
+0009-sweet-drop-apple-soc-only-exports.patch,0009-sweet-drop-apple-soc-only-exports.patch,adapt,0,通用补丁
+0010-sweet-early-framebuffer-debug.patch,0010-sweet-early-framebuffer-debug.patch,adapt,0,通用补丁
+0011-sweet-physmap-alignment-padding.patch,0011-sweet-physmap-alignment-padding.patch,adapt,0,通用补丁
+0012-sweet-keep-debug-console-after-ttbr0.patch,0012-sweet-keep-debug-console-after-ttbr0.patch,adapt,3,通用补丁
+0013-sweet-kmem-rng-without-corecrypto.patch,0013-sweet-kmem-rng-without-corecrypto.patch,adapt,0,通用补丁
+0014-sweet-kernel-hmac-prng.patch,0014-sweet-kernel-hmac-prng.patch,adapt,0,通用补丁
+0015-sweet-unavailable-trust-cache-runtime.patch,0015-sweet-unavailable-trust-cache-runtime.patch,adapt,0,通用补丁
+0016-sweet-device-tree-platform-expert.patch,0016-sweet-device-tree-platform-expert.patch,adapt,0,通用补丁
+0017-santoni-gicv2-rtclock.patch,0017-wt86047-gicv2-rtclock.patch,manual,7,"零改动。GICD 0x0b000000 / GICC 0x0b002000 与 8916 DTB 的 qcom,msm-qgic2 完全一致；virtual-timer-intid=20 从 FDT 读，8916 同样是 20。"
+0018-sweet-boot-cpu-driver.patch,0018-sweet-boot-cpu-driver.patch,adapt,0,通用补丁
+0019-sweet-builtin-pthread.patch,0019-sweet-builtin-pthread.patch,adapt,1,通用补丁
+0020-sweet-portable-aes-cbc.patch,0020-sweet-portable-aes-cbc.patch,adapt,1,通用补丁
+0021-sweet-mockfs-ramdisk-root.patch,0021-sweet-mockfs-ramdisk-root.patch,adapt,0,通用补丁
+0022-sweet-ramdisk-root-without-iomedia.patch,0022-sweet-ramdisk-root-without-iomedia.patch,adapt,0,通用补丁
+0023-sweet-builtin-sha256-for-libkern.patch,0023-sweet-builtin-sha256-for-libkern.patch,adapt,0,通用补丁
+0024-sweet-mockfs-virtual-ramdisk-io.patch,0024-sweet-mockfs-virtual-ramdisk-io.patch,adapt,0,通用补丁
+0025-sweet-builtin-amfi-no-entitlements.patch,0025-sweet-builtin-amfi-no-entitlements.patch,adapt,0,通用补丁
+0026-sweet-builtin-hfs.patch,0026-sweet-builtin-hfs.patch,adapt,0,通用补丁
+0027-sweet-bearssl-md5.patch,0027-sweet-bearssl-md5.patch,adapt,0,通用补丁
+0028-sweet-ufs-root-device.patch,0028-sweet-ufs-root-device.patch,keep-dead,0,UFS 驱动；8916 无 UFS，代码保留不调用（根设备走 0142 SDHCI）
+0029-sweet-unsealed-root-volume.patch,0029-sweet-unsealed-root-volume.patch,adapt,0,通用补丁
+0030-sweet-ufs-writes.patch,0030-sweet-ufs-writes.patch,keep-dead,0,UFS 驱动；8916 无 UFS，代码保留不调用（根设备走 0142 SDHCI）
+0031-sweet-read-write-root.patch,0031-sweet-read-write-root.patch,adapt,0,通用补丁
+0032-sweet-bearssl-sha1.patch,0032-sweet-bearssl-sha1.patch,adapt,0,通用补丁
+0033-sweet-bearssl-sha384-sha512.patch,0033-sweet-bearssl-sha384-sha512.patch,adapt,0,通用补丁
+0034-sweet-ufs-dma-above-4g.patch,0034-sweet-ufs-dma-above-4g.patch,keep-dead,0,UFS 驱动；8916 无 UFS，代码保留不调用（根设备走 0142 SDHCI）
+0035-sweet-amfi-entitlements-platform-binaries.patch,0035-sweet-amfi-entitlements-platform-binaries.patch,adapt,0,通用补丁
+0036-sweet-amfi-cs-signed.patch,0036-sweet-amfi-cs-signed.patch,adapt,0,通用补丁
+0037-sweet-config-bindfs.patch,0037-sweet-config-bindfs.patch,adapt,0,通用补丁
+0038-sweet-applekeystore.patch,0038-sweet-applekeystore.patch,adapt,0,通用补丁
+0039-sweet-coredump-default-off.patch,0039-sweet-coredump-default-off.patch,adapt,0,通用补丁
+0040-sweet-iowatchdog.patch,0040-sweet-iowatchdog.patch,adapt,0,通用补丁
+0041-sweet-hfs-link-notes.patch,0041-sweet-hfs-link-notes.patch,adapt,0,通用补丁
+0042-sweet-short-exec-log.patch,0042-sweet-short-exec-log.patch,adapt,0,通用补丁
+0043-sweet-console-crash-log.patch,0043-sweet-console-crash-log.patch,adapt,0,通用补丁
+0044-sweet-crash-log-reason.patch,0044-sweet-crash-log-reason.patch,adapt,0,通用补丁
+0045-sweet-iowatchdog-pmu-primary.patch,0045-sweet-iowatchdog-pmu-primary.patch,adapt,0,通用补丁
+0046-sweet-iosurface-iomfb.patch,0046-sweet-iosurface-iomfb.patch,adapt,0,通用补丁
+0047-sweet-persistent-console-log.patch,0047-sweet-persistent-console-log.patch,adapt,0,通用补丁
+0048-sweet-devnull-tee.patch,0048-sweet-devnull-tee.patch,adapt,0,通用补丁
+0049-sweet-iokit-trace.patch,0049-sweet-iokit-trace.patch,adapt,0,通用补丁
+0050-sweet-sandbox-policy.patch,0050-sweet-sandbox-policy.patch,adapt,0,通用补丁
+0051-sweet-crash-heap-strings.patch,0051-sweet-crash-heap-strings.patch,adapt,0,通用补丁
+0052-sweet-hfs-rename-swap.patch,0052-sweet-hfs-rename-swap.patch,adapt,0,通用补丁
+0053-sweet-crash-scan-springboard.patch,0053-sweet-crash-scan-springboard.patch,adapt,0,通用补丁
+0054-sweet-process-sampler.patch,0054-sweet-process-sampler.patch,adapt,0,通用补丁
+0055-sweet-aks-ext-state-sampler-depth.patch,0055-sweet-aks-ext-state-sampler-depth.patch,adapt,0,通用补丁
+0056-sweet-fb-throttled-present.patch,0056-sweet-fb-throttled-present.patch,adapt,0,通用补丁
+0057-sweet-no-ext-resolver.patch,0057-sweet-no-ext-resolver.patch,adapt,0,通用补丁
+0058-sweet-hid-event-services.patch,0058-sweet-hid-event-services.patch,adapt,0,通用补丁
+0059-sweet-iphone-identity.patch,0059-sweet-iphone-identity.patch,adapt,0,通用补丁
+0060-sweet-keys-touch-drivers.patch,0060-sweet-keys-touch-drivers.patch,adapt,0,通用补丁
+0061-sweet-iphone-x-display-size.patch,0061-sweet-iphone-x-display-size.patch,adapt,0,通用补丁
+0062-sweet-touch-power-battery.patch,0062-sweet-touch-power-battery.patch,adapt,0,通用补丁
+0063-sweet-goodix-geni-packing.patch,0063-sweet-goodix-geni-packing.patch,adapt,0,通用补丁
+0064-sweet-priv-work-interval.patch,0064-sweet-priv-work-interval.patch,adapt,0,通用补丁
+0065-sweet-smp-psci.patch,0065-sweet-smp-psci.patch,manual,1,"★必须改。8916 原厂固件 enable-method=""qcom,arm-cortex-acc""，没有 PSCI。sweet_psci_cpu_on() 走 SMC 0xC4000003，在红米2 上会返回错误，而当前代码 在失败时 panic(""NOT alive"")。改法：失败只 IOLog 不 panic；不带 cpus= 启动参数时该补丁默认单核（cpus_boot_arg=1），可以先单核点亮。"
+0066-sweet-crash-fault-region.patch,0066-sweet-crash-fault-region.patch,adapt,0,通用补丁
+0067-sweet-console-mute.patch,0067-sweet-console-mute.patch,adapt,0,通用补丁
+0068-sweet-surface-lookup-cached.patch,0068-sweet-surface-lookup-cached.patch,adapt,0,通用补丁
+0069-sweet-ufs-faster.patch,0069-sweet-ufs-faster.patch,keep-dead,0,UFS 驱动；8916 无 UFS，代码保留不调用（根设备走 0142 SDHCI）
+0070-sweet-pid-hibernate.patch,0070-sweet-pid-hibernate.patch,adapt,0,通用补丁
+0071-sweet-touch-edge.patch,0071-sweet-touch-edge.patch,adapt,0,通用补丁
+0072-sweet-usb-probe.patch,0072-sweet-usb-probe.patch,adapt,0,通用补丁
+0073-sweet-usb-device-ep0.patch,0073-sweet-usb-device-ep0.patch,adapt,0,通用补丁
+0074-sweet-usb-vbus-override.patch,0074-sweet-usb-vbus-override.patch,adapt,0,通用补丁
+0075-sweet-usb-ecm.patch,0075-sweet-usb-ecm.patch,adapt,0,通用补丁
+0076-sweet-usb-rx-mbuf.patch,0076-sweet-usb-rx-mbuf.patch,adapt,0,通用补丁
+0077-sweet-usb-live-log.patch,0077-sweet-usb-live-log.patch,adapt,0,通用补丁
+0078-sweet-smp-8-cores.patch,0078-sweet-smp-8-cores.patch,adapt,2,通用补丁
+0079-sweet-display-power.patch,0079-sweet-display-power.patch,adapt,0,通用补丁
+0080-topaz-cpu-topology-skip-sweet-hw.patch,0080-topaz-cpu-topology-skip-sweet-hw.patch,adapt,0,通用补丁
+0081-topaz-armv8.0-no-lse-no-pan.patch,0081-topaz-armv8.0-no-lse-no-pan.patch,adapt,0,通用补丁
+0082-santoni-4k-entry.patch,0082-wt86047-4k-entry.patch,adapt,3,通用补丁
+0082-topaz-boot-on-gold-cpu.patch,0082-topaz-boot-on-gold-cpu.patch,adapt,1,通用补丁
+0083-topaz-touch-ft5452.patch,0083-topaz-touch-ft5452.patch,adapt,0,通用补丁
+0084-santoni-4k-user-va.patch,0084-wt86047-4k-user-va.patch,adapt,1,通用补丁
+0084-topaz-touch-diag-panic.patch,0084-topaz-touch-diag-panic.patch,adapt,0,通用补丁
+0085-santoni-board-target.patch,0085-wt86047-board-target.patch,manual,21,文本替换即可（SANTONI→WT86047、MAX_CPUS 8→4、SWEET_SMP_MAX_CPUS 8→4）。另需在 MakeInc.def 的 SUPPORTED_ARM64_MACHINE_CONFIGS 加 WT86047。
+0085-topaz-fb-stayon.patch,0085-topaz-fb-stayon.patch,adapt,0,通用补丁
+0086-topaz-touch-ft-parser-stats.patch,0086-topaz-touch-ft-parser-stats.patch,adapt,0,通用补丁
+0087-topaz-touch-rcg-fix-keys.patch,0087-topaz-touch-rcg-fix-keys.patch,adapt,0,通用补丁
+0088-topaz-gpt-watchdog.patch,0088-topaz-gpt-watchdog.patch,adapt,0,通用补丁
+0089-topaz-touch-ft-diag.patch,0089-topaz-touch-ft-diag.patch,adapt,0,通用补丁
+0090-topaz-touch-ff-frame-release.patch,0090-topaz-touch-ff-frame-release.patch,adapt,0,通用补丁
+0091-topaz-battery-gauge-charger.patch,0091-topaz-battery-gauge-charger.patch,adapt,0,通用补丁
+0092-topaz-direct-mdp-scanout.patch,0092-topaz-direct-mdp-scanout.patch,manual,0,topaz(msm8953) 的 MDP 直扫路径，8916 的 mdss_mdp@1a00000 版本不同。第一阶段不要用：直接往 LK 留下的 splash 帧缓冲里画（CPU 渲染），这条只在需要 MDP 硬件合成时才动。
+0093-santoni-39bit-kernel-va.patch,0093-wt86047-39bit-kernel-va.patch,adapt,3,通用补丁
+0093-topaz-scanout-contiguous-ram.patch,0093-topaz-scanout-contiguous-ram.patch,adapt,0,通用补丁
+0094-santoni-cortex-a53-codegen.patch,0094-wt86047-cortex-a53-codegen.patch,adapt,3,通用补丁
+0094-topaz-cpufreq-max.patch,0094-topaz-cpufreq-max.patch,adapt,0,通用补丁
+0095-santoni-disable-pan.patch,0095-wt86047-disable-pan.patch,adapt,4,通用补丁
+0095-topaz-wcomb-console-fb.patch,0095-topaz-wcomb-console-fb.patch,adapt,0,通用补丁
+0096-topaz-smooth-fade.patch,0096-topaz-smooth-fade.patch,adapt,0,通用补丁
+0097-santoni-zone-va-size.patch,0097-wt86047-zone-va-size.patch,adapt,2,通用补丁
+0097-topaz-unified-console-scanout.patch,0097-topaz-unified-console-scanout.patch,adapt,0,通用补丁
+0098-santoni-early-console.patch,0098-wt86047-early-console.patch,manual,5,UART 基址核对：8916 console = BLSP1_UART2 @ 0x78B0000（DTB: serial@78b0000，GPIO4/5 func2）。santoni 同为 0x78B0000，预期零改动，但要在 0098 里确认写死的地址。
+0098-topaz-intf1-refresh-diag.patch,0098-topaz-intf1-refresh-diag.patch,adapt,0,通用补丁
+0099-topaz-surface-inuse-console-batch.patch,0099-topaz-surface-inuse-console-batch.patch,adapt,0,通用补丁
+0100-topaz-double-buffer-kernel-frames.patch,0100-topaz-double-buffer-kernel-frames.patch,adapt,0,通用补丁
+0101-topaz-real-dcache-flush.patch,0101-topaz-real-dcache-flush.patch,adapt,0,通用补丁
+0102-topaz-copy-and-flip.patch,0102-topaz-copy-and-flip.patch,adapt,0,通用补丁
+0103-topaz-copy-path-back-buffer.patch,0103-topaz-copy-path-back-buffer.patch,adapt,0,通用补丁
+0104-topaz-dsi-brightness.patch,0104-topaz-dsi-brightness.patch,adapt,0,通用补丁
+0105-topaz-applearmbacklight.patch,0105-topaz-applearmbacklight.patch,adapt,0,通用补丁
+0106-topaz-dcs-display-onoff.patch,0106-topaz-dcs-display-onoff.patch,adapt,0,通用补丁
+0107-topaz-local-dcache-clean.patch,0107-topaz-local-dcache-clean.patch,adapt,0,通用补丁
+0110-topaz-backlight-optin.patch,0110-topaz-backlight-optin.patch,adapt,0,通用补丁
+0111-topaz-real-dcache-ops.patch,0111-topaz-real-dcache-ops.patch,adapt,0,通用补丁
+0112-topaz-console-log-filter.patch,0112-topaz-console-log-filter.patch,adapt,0,通用补丁
+0113-topaz-modem-pas-boot.patch,0113-topaz-modem-pas-boot.patch,adapt,0,通用补丁
+0114-topaz-iphonex-canvas-aligned.patch,0114-topaz-iphonex-canvas-aligned.patch,adapt,0,通用补丁
+0115-topaz-modem-fw-from-modem-a.patch,0115-topaz-modem-fw-from-modem-a.patch,adapt,0,通用补丁
+0116-topaz-modem-pas-supported-info.patch,0116-topaz-modem-pas-supported-info.patch,adapt,0,通用补丁
+0117-topaz-modem-split-hash.patch,0117-topaz-modem-split-hash.patch,adapt,0,通用补丁
+0118-topaz-modem-glink-qrtr.patch,0118-topaz-modem-glink-qrtr.patch,adapt,0,通用补丁
+0119-topaz-modem-early-log.patch,0119-topaz-modem-early-log.patch,adapt,0,通用补丁
+0120-topaz-console-only.patch,0120-topaz-console-only.patch,adapt,0,通用补丁
+0121-topaz-modem-host-services.patch,0121-topaz-modem-host-services.patch,adapt,0,通用补丁
+0122-topaz-modem-wlfw.patch,0122-topaz-modem-wlfw.patch,adapt,0,通用补丁
+0123-topaz-wlan-scan.patch,0123-topaz-wlan-scan.patch,adapt,0,通用补丁
+0124-topaz-wlfw-restart-cap-retry.patch,0124-topaz-wlfw-restart-cap-retry.patch,adapt,0,通用补丁
+0125-topaz-wlan-htt.patch,0125-topaz-wlan-htt.patch,adapt,0,通用补丁
+0126-topaz-wlan-api.patch,0126-topaz-wlan-api.patch,adapt,0,通用补丁
+0127-topaz-sweetbusy.patch,0127-topaz-sweetbusy.patch,adapt,0,通用补丁
+0128-topaz-iokit-quiesce.patch,0128-topaz-iokit-quiesce.patch,adapt,0,通用补丁
+0129-topaz-wlan-station.patch,0129-topaz-wlan-station.patch,adapt,0,通用补丁
+0130-topaz-wlan-join-pmk.patch,0130-topaz-wlan-join-pmk.patch,adapt,0,通用补丁
+0131-topaz-sweetsurface-no-zero-clients.patch,0131-topaz-sweetsurface-no-zero-clients.patch,adapt,0,通用补丁
+0132-topaz-sweetsurface-wrap-client.patch,0132-topaz-sweetsurface-wrap-client.patch,adapt,0,通用补丁
+0133-topaz-sweetsurface-values.patch,0133-topaz-sweetsurface-values.patch,adapt,0,通用补丁
+0134-topaz-sweetsurface-client-address.patch,0134-topaz-sweetsurface-client-address.patch,adapt,0,通用补丁
+0135-topaz-sweetsurface-detach-allocsize.patch,0135-topaz-sweetsurface-detach-allocsize.patch,adapt,0,通用补丁
+0136-topaz-sweetsurface-detach-views.patch,0136-topaz-sweetsurface-detach-views.patch,adapt,0,通用补丁
+0137-topaz-sweetsurface-zombie-state.patch,0137-topaz-sweetsurface-zombie-state.patch,adapt,0,通用补丁
+0138-topaz-empty-ioacceleratores.patch,0138-topaz-empty-ioacceleratores.patch,adapt,0,通用补丁
+0139-topaz-sweetsurface-publish-client-address.patch,0139-topaz-sweetsurface-publish-client-address.patch,adapt,0,通用补丁
+0140-santoni-kprintf-early-console.patch,0140-wt86047-kprintf-early-console.patch,adapt,17,通用补丁
+0141-santoni-disable-topaz-battery-cpufreq.patch,0141-wt86047-disable-topaz-battery-cpufreq.patch,adapt,12,通用补丁
+0142-santoni-sdhci-emmc-driver.patch,0142-wt86047-sdhci-emmc-driver.patch,manual,251,几乎零改动。SDCC1: core 0x07824900 + vendor 0x07824000，8916 DTB 实测一致；驱动按 LK 交接态工作、不自己配 GCC/SPMI，正好绕开 8916 与 8937 的时钟树差异。需核对 vendor 寄存器偏移（CORE_HC_MODE +0x78、CORE_VENDOR_SPEC +0x10c）在 8916 上是否同值——两者都是 sdhci-msm v4，预期一致，用串口读回校验。
+0143-santoni-persistent-console-log.patch,0143-wt86047-persistent-console-log.patch,manual,42,依赖 0142 的 system 分区日志区（8193 扇区）。8916 的 system 分区起始扇区不同，必须按 gpt_main0.bin 的实际分区表改偏移，否则会写坏 system。
+0144-santoni-4k-unsigned-dyld-cache.patch,0144-wt86047-4k-unsigned-dyld-cache.patch,adapt,3,通用补丁
+0145-santoni-bindfs.patch,0145-wt86047-bindfs.patch,adapt,3,通用补丁
+0146-santoni-suppress-non-init-panic.patch,0146-wt86047-suppress-non-init-panic.patch,adapt,2,通用补丁
+0147-santoni-24bpp-iomfb.patch,0147-wt86047-24bpp-iomfb.patch,adapt,10,通用补丁
+0148-santoni-smp8.patch,0148-wt86047-smp8.patch,adapt,7,通用补丁
+0149-santoni-varfix.patch,0149-wt86047-varfix.patch,adapt,38,通用补丁
+0150-santoni-boot17.patch,0150-wt86047-boot17.patch,adapt,1,通用补丁
+0151-santoni-touch-keys.patch,0151-wt86047-touch-keys.patch,adapt,58,通用补丁
+0152-santoni-touch-rpm-rails.patch,0152-wt86047-touch-rpm-rails.patch,adapt,145,通用补丁
+0153-santoni-touch-diag-retry.patch,0153-wt86047-touch-diag-retry.patch,adapt,28,通用补丁
+0154-santoni-rpm-doorbell-bit0.patch,0154-wt86047-rpm-doorbell-bit0.patch,adapt,9,通用补丁
+0155-santoni-smem-partition-toc.patch,0155-wt86047-smem-partition-toc.patch,adapt,13,通用补丁
+0156-santoni-smem-rpm-msgram.patch,0156-wt86047-smem-rpm-msgram.patch,adapt,17,通用补丁
+0157-santoni-smem-legacy-fifo-gic-mask.patch,0157-wt86047-smem-legacy-fifo-gic-mask.patch,adapt,22,通用补丁
+0158-santoni-rpm-fifo-rebase-scan.patch,0158-wt86047-rpm-fifo-rebase-scan.patch,adapt,59,通用补丁
+0159-santoni-rpm-glink-fallback.patch,0159-wt86047-rpm-glink-fallback.patch,adapt,121,通用补丁
+0160-santoni-rpm-reply-at-msgram0.patch,0160-wt86047-rpm-reply-at-msgram0.patch,adapt,23,通用补丁
+0161-santoni-rpm-workbuf-long-poll.patch,0161-wt86047-rpm-workbuf-long-poll.patch,adapt,49,通用补丁
+0162-santoni-touch-reset-bit1-ft5435-swipe.patch,0162-wt86047-touch-reset-bit1-ft5435-swipe.patch,adapt,36,通用补丁
+0163-santoni-touch-l10-spmi-v2-i2c-timing.patch,0163-wt86047-touch-l10-spmi-v2-i2c-timing.patch,adapt,22,通用补丁
+0164-santoni-touch-fixes.patch,0164-wt86047-touch-fixes.patch,adapt,64,通用补丁
+0165-santoni-physical-touch.patch,0165-wt86047-physical-touch.patch,adapt,287,通用补丁
+0166-santoni-volume-buttons.patch,0166-wt86047-volume-buttons.patch,adapt,20,通用补丁
+0167-santoni-smp-irq.patch,0167-wt86047-smp-irq.patch,adapt,5,通用补丁
+0168-santoni-panel-copy.patch,0168-wt86047-panel-copy.patch,manual,3,"FB 基址必须改：santoni 连续 splash 区 0x90001000，8916 是 0x83000000（DTB splash_region@83000000, size 0x1400000=20MB）。shim/console.h 的 FB_BASE 同样要改，见 scripts/build-shim.sh。"
+0169-santoni-hardware-udelay.patch,0169-wt86047-hardware-udelay.patch,adapt,47,通用补丁
+0170-santoni-power-button.patch,0170-wt86047-power-button.patch,adapt,22,通用补丁
+0171-santoni-coherent-wfi.patch,0171-wt86047-coherent-wfi.patch,adapt,2,通用补丁
+0172-santoni-button-poll-isolation.patch,0172-wt86047-button-poll-isolation.patch,adapt,38,通用补丁
+0173-santoni-secondary-entry.patch,0173-wt86047-secondary-entry.patch,adapt,17,通用补丁
+0174-santoni-cache-helper-c-linkage.patch,0174-wt86047-cache-helper-c-linkage.patch,adapt,2,通用补丁
+0175-santoni-performance-probe.patch,0175-wt86047-performance-probe.patch,adapt,15,通用补丁
+0176-santoni-physical-cpu-clusters.patch,0176-wt86047-physical-cpu-clusters.patch,adapt,15,通用补丁
+0177-santoni-performance-bind-api.patch,0177-wt86047-performance-bind-api.patch,adapt,2,通用补丁
+0178-santoni-startup-publication.patch,0178-wt86047-startup-publication.patch,adapt,2,通用补丁
+0179-santoni-flat-clutch-scheduler.patch,0179-wt86047-flat-clutch-scheduler.patch,adapt,10,通用补丁
+0180-santoni-gpu-kernel-proof.patch,0180-wt86047-gpu-kernel-proof.patch,keep-disabled,28,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0181-santoni-gpu-smmu-fault-encoding.patch,0181-wt86047-gpu-smmu-fault-encoding.patch,keep-disabled,6,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0182-santoni-gpu-xnu-adapter-api.patch,0182-wt86047-gpu-xnu-adapter-api.patch,keep-disabled,6,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0183-santoni-gpu-darwin-asm-separators.patch,0183-wt86047-gpu-darwin-asm-separators.patch,keep-disabled,5,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0184-santoni-gpu-startup-visibility.patch,0184-wt86047-gpu-startup-visibility.patch,keep-disabled,14,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0185-santoni-gpu-power-failure-record.patch,0185-wt86047-gpu-power-failure-record.patch,keep-disabled,14,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0186-santoni-gpu-target-clock-list.patch,0186-wt86047-gpu-target-clock-list.patch,keep-disabled,4,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0187-santoni-gpu-audit-safety-gates.patch,0187-wt86047-gpu-audit-safety-gates.patch,keep-disabled,13,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0188-santoni-gpu-ownership-fault-latches.patch,0188-wt86047-gpu-ownership-fault-latches.patch,keep-disabled,3,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0189-santoni-gpu-gfx3d-ownership-guard.patch,0189-wt86047-gpu-gfx3d-ownership-guard.patch,keep-disabled,3,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0190-santoni-gpu-clock-completion-checks.patch,0190-wt86047-gpu-clock-completion-checks.patch,keep-disabled,6,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0191-santoni-gpu-translation-audit-boundaries.patch,0191-wt86047-gpu-translation-audit-boundaries.patch,keep-disabled,3,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0192-santoni-gpu-a505-paired-stop.patch,0192-wt86047-gpu-a505-paired-stop.patch,keep-disabled,6,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0193-santoni-gpu-a50x-resume-boundaries.patch,0193-wt86047-gpu-a50x-resume-boundaries.patch,keep-disabled,3,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0194-santoni-gpu-vendor-sp-clock-release.patch,0194-wt86047-gpu-vendor-sp-clock-release.patch,keep-disabled,6,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0195-santoni-gpu-hold-partial-resume-power.patch,0195-wt86047-gpu-hold-partial-resume-power.patch,keep-disabled,3,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0196-santoni-gpu-accepted-idle-mask.patch,0196-wt86047-gpu-accepted-idle-mask.patch,keep-disabled,6,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0197-santoni-gpu-smmu-4k-level-select.patch,0197-wt86047-gpu-smmu-4k-level-select.patch,keep-disabled,2,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0198-santoni-gpu-fsr-fault-mask.patch,0198-wt86047-gpu-fsr-fault-mask.patch,keep-disabled,6,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0199-santoni-gpu-pas-allocation-preflight.patch,0199-wt86047-gpu-pas-allocation-preflight.patch,keep-disabled,10,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0200-santoni-gpu-pas-auditable-boundaries.patch,0200-wt86047-gpu-pas-auditable-boundaries.patch,keep-disabled,2,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0201-santoni-gpu-scm-capability-probe.patch,0201-wt86047-gpu-scm-capability-probe.patch,keep-disabled,10,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0202-santoni-gpu-pas-cache-preflight.patch,0202-wt86047-gpu-pas-cache-preflight.patch,keep-disabled,23,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0203-santoni-gpu-stock-unsecure-transition.patch,0203-wt86047-gpu-stock-unsecure-transition.patch,keep-disabled,26,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0204-santoni-gpu-stock-pixel-test.patch,0204-wt86047-gpu-stock-pixel-test.patch,keep-disabled,22,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0205-santoni-gpu-bounded-ib-proof.patch,0205-wt86047-gpu-bounded-ib-proof.patch,keep-disabled,20,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0206-santoni-gpu-persistent-session.patch,0206-wt86047-gpu-persistent-session.patch,keep-disabled,29,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0207-santoni-gpu-scalar-user-client.patch,0207-wt86047-gpu-scalar-user-client.patch,keep-disabled,27,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0208-santoni-gpu-boot-el0-launcher.patch,0208-wt86047-gpu-boot-el0-launcher.patch,keep-disabled,98,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0209-santoni-gpu-launcher-pmap-declaration.patch,0209-wt86047-gpu-launcher-pmap-declaration.patch,keep-disabled,5,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0210-santoni-gpu-mockfs-lp64-registration.patch,0210-wt86047-gpu-mockfs-lp64-registration.patch,keep-disabled,1,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0211-santoni-gpu-el0-outcome-trace.patch,0211-wt86047-gpu-el0-outcome-trace.patch,keep-disabled,47,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0212-santoni-remoted-platform-workaround.patch,0212-wt86047-remoted-platform-workaround.patch,adapt,13,通用补丁
+0213-santoni-gpu-late-launch-observation.patch,0213-wt86047-gpu-late-launch-observation.patch,keep-disabled,7,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0214-santoni-gpu-trace-path-diagnostics.patch,0214-wt86047-gpu-trace-path-diagnostics.patch,keep-disabled,59,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0215-santoni-gpu-trace-vnode-dispatch.patch,0215-wt86047-gpu-trace-vnode-dispatch.patch,keep-disabled,3,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0216-santoni-gpu-user-fault-observation.patch,0216-wt86047-gpu-user-fault-observation.patch,keep-disabled,18,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0217-santoni-gpu-user-fault-osfmk-declarations.patch,0217-wt86047-gpu-user-fault-osfmk-declarations.patch,keep-disabled,7,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0218-santoni-gpu-user-fault-code-boundary.patch,0218-wt86047-gpu-user-fault-code-boundary.patch,keep-disabled,3,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0219-santoni-gpu-el0-readiness-trace.patch,0219-wt86047-gpu-el0-readiness-trace.patch,keep-disabled,8,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0220-santoni-gpu-render-contract.patch,0220-wt86047-gpu-render-contract.patch,keep-disabled,6,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0221-santoni-gpu-live-offscreen-blits.patch,0221-wt86047-gpu-live-offscreen-blits.patch,keep-disabled,20,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0222-santoni-gpu-live-cp-readback.patch,0222-wt86047-gpu-live-cp-readback.patch,keep-disabled,3,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0223-santoni-gpu-ui-presentation.patch,0223-wt86047-gpu-ui-presentation.patch,keep-disabled,44,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0224-santoni-gpu-graphics-buffers.patch,0224-wt86047-gpu-graphics-buffers.patch,keep-disabled,62,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0225-santoni-gpu-iokit-subdescriptor-header.patch,0225-wt86047-gpu-iokit-subdescriptor-header.patch,keep-disabled,0,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0226-santoni-gpu-wide-raster-policy.patch,0226-wt86047-gpu-wide-raster-policy.patch,keep-disabled,107,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0227-santoni-gpu-renderer-admission.patch,0227-wt86047-gpu-renderer-admission.patch,keep-disabled,16,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0228-santoni-gpu-renderer-dyld-policy.patch,0228-wt86047-gpu-renderer-dyld-policy.patch,keep-disabled,22,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0229-santoni-gpu-dyld-caller-context.patch,0229-wt86047-gpu-dyld-caller-context.patch,keep-disabled,6,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用
+0230-santoni-gpu-startup-boundaries.patch,0230-wt86047-gpu-startup-boundaries.patch,keep-disabled,32,Adreno 505/GPU 路径；8916 是 Adreno 306，不适用，保留但不启用

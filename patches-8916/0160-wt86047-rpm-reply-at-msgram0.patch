@@ -1,0 +1,71 @@
+--- a/bsd/dev/wt86047_sdhci.c
++++ b/bsd/dev/wt86047_sdhci.c
+@@ -4091,6 +4091,43 @@
+ }
+ 
+ /*
++ * The Boot 26 scan found a reply packet ("req\0" then "msg#" records) at
++ * msg-ram offset 0 - the first bank's start, not the toc-implied rx fifo
++ * at 0x68000+0x1000 the RPM never writes. Poll the region directly; the
++ * layout matches wt86047_rpm_parse_reply byte for byte.
++ */
++static bool
++wt86047_rpm_poll_region(unsigned ldo, uint32_t id)
++{
++	volatile uint32_t *r = (volatile uint32_t *)wt86047_smd.msgram;
++	if (r[0] != RPM_MSG_REQ) {
++		return false;
++	}
++	uint32_t len = r[1];
++	if (len == 0 || len > 512u) {
++		len = 96u;
++	}
++	uint32_t take = len;
++	if (take > sizeof(wt86047_smd.resp) - 1u) {
++		take = sizeof(wt86047_smd.resp) - 1u;
++	}
++	for (uint32_t i = 0; i < take; i++) {
++		wt86047_smd.resp[i] = (uint8_t)*(volatile uint8_t *)
++		    (wt86047_smd.msgram + i);
++	}
++	wt86047_smd.resp_len = take;
++	return wt86047_rpm_parse_reply(ldo, id);
++}
++
++static void
++wt86047_rpm_dump_region(const char *tag)
++{
++	volatile uint32_t *r = (volatile uint32_t *)wt86047_smd.msgram;
++	printf("WT86047 RPM: %s %08x %08x %08x %08x %08x %08x %08x %08x\n",
++	    tag, r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]);
++}
++
++/*
+  * Vote PM8937 LDOn on at uv in the active set, exactly like Linux
+  * qcom_smd_regulator with SWEN + UV keys.  rsc "ldoa", id = n.
+  * On silence: dump where the msg ram holds reply magic, try the fifo
+@@ -4111,16 +4148,24 @@
+ 	};
+ 
+ 	for (int attempt = 0; attempt < 2; attempt++) {
++		if (attempt == 0) {
++			wt86047_rpm_dump_region("pre ");
++		}
+ 		wt86047_smd.resp_ready = false;
+ 		if (!wt86047_smd_send(msg, sizeof(msg))) {
+ 			return false;
+ 		}
+ 		for (int ms = 0; ms < 700 && !wt86047_smd.resp_ready; ms++) {
+ 			(void)wt86047_smd_rx_drain();
++			/* The reply lands at msg-ram offset 0 (Boot 26 scan). */
++			if (wt86047_rpm_poll_region(ldo, id)) {
++				return true;
++			}
+ 			if (!wt86047_smd.resp_ready) {
+ 				delay(1000);
+ 			}
+ 		}
++		wt86047_rpm_dump_region("post");
+ 		if (wt86047_smd.resp_ready) {
+ 			break;
+ 		}
