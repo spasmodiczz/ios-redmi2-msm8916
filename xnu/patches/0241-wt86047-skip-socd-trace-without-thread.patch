@@ -1,0 +1,28 @@
+diff --git a/osfmk/kern/socd_client.c b/osfmk/kern/socd_client.c
+--- a/osfmk/kern/socd_client.c
++++ b/osfmk/kern/socd_client.c
+@@ -99,6 +99,24 @@
+ 	socd_client_trace_arg_t  arg3,
+ 	socd_client_trace_arg_t  arg4)
+ {
++#if defined(WT86047)
++	/*
++	 * Every tracepoint ends in debug_is_current_cpu_in_panic_state(), which
++	 * reads per-CPU data via current_percpu_base() -> current_thread().
++	 * During early boot TPIDR_EL1 holds no thread, so that dereferences NULL
++	 * at offset 0x220: the fault handler then faults again and the board
++	 * resets. Backtrace from the panel:
++	 *   socd_client_trace -> debug_is_current_cpu_in_panic_state
++	 *     -> current_percpu_base (pc), far = 0x220.
++	 *
++	 * There is nothing worth tracing before the first thread exists, and both
++	 * the buffer path and the KDBG duplicate depend on per-CPU state, so drop
++	 * the call entirely at that point.
++	 */
++	if (current_thread() == NULL) {
++		return;
++	}
++#endif
+ 	socd_client_trace_entry_t entry;
+ 	uint32_t trace_idx, buff_idx, len;
+ 	uint64_t time_ns;
