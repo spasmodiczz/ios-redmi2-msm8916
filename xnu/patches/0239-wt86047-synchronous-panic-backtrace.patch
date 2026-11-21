@@ -1,41 +1,79 @@
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
-@@ -518,6 +518,40 @@
+@@ -503,6 +503,35 @@
+ }
+ 
+ void
++#if defined(WT86047)
++/*
++ * Panic-safe output. kprintf (printf) can take locks and read per-CPU state,
++ * and this handler runs exactly when that is not safe: calling it here made the
++ * first abort recurse inside the handler, so the board double faulted and the
++ * watchdog reset it instead of halting with the dump on screen.
++ */
++static void
++sleh_bt_str(const char *s)
++{
++	extern void sweet_early_putc(char c);
++
++	while (*s) {
++		sweet_early_putc(*s++);
++	}
++}
++
++static void
++sleh_bt_hex(uint64_t v)
++{
++	extern void sweet_early_putc(char c);
++	const char *d = "0123456789abcdef";
++
++	for (int sh = 60; sh >= 0; sh -= 4) {
++		sweet_early_putc(d[(v >> sh) & 0xf]);
++	}
++}
++#endif
++
+ sleh_synchronous_sp1(arm_context_t *context, uint32_t esr, vm_offset_t far __unused)
+ {
+ 	esr_exception_class_t  class = ESR_EC(esr);
+@@ -518,6 +547,42 @@
  	}
  		OS_FALLTHROUGH; // panic if we return from the debugger
  	default:
 +#if defined(WT86047)
 +	/*
 +	 * The early console's panic path prints the reason and the register file and
-+	 * then halts, so XNU never reaches its own backtrace printer.
-+	 *
-+	 * Do not walk the frame pointer chain here: fp may point at an unmapped VA
-+	 * and a fault inside the exception handler becomes a double fault, which the
-+	 * watchdog turns into a silent reboot. Only read the current stack instead
-+	 * (sp .. sp+512 is mapped by definition) and keep the words that look like
-+	 * return addresses into kernel text.
++	 * then halts, so XNU never reaches its own backtrace printer. Read only the
++	 * current stack (sp .. sp+384 is mapped by definition) and print the words
++	 * that look like return addresses into kernel text.
 +	 */
 +	{
-+		extern int printf(const char *, ...);
-+		uint64_t bt_sp = get_saved_state_sp(state);
-+		unsigned int bt_n = 0;
-+		printf("WT86047 BT pc=%llx sp=%llx\n",
-+		    (unsigned long long)get_saved_state_pc(state),
-+		    (unsigned long long)bt_sp);
-+		for (unsigned int bt_i = 0; bt_i < 64 && bt_n < 18; bt_i++) {
-+			if (bt_sp < 0xfffffff000000000ULL || (bt_sp & 7) != 0) {
-+				break;
-+			}
-+			uint64_t bt_v = *(volatile uint64_t *)(bt_sp + bt_i * 8);
-+			if (bt_v >= 0xfffffff007004000ULL && bt_v < 0xfffffff007b7c000ULL) {
-+				printf("%llx ", (unsigned long long)bt_v);
-+				if ((++bt_n & 1) == 0) {
-+					printf("\n");
++		static int bt_busy;
++		if (!bt_busy) {
++			bt_busy = 1;
++			uint64_t bt_sp = get_saved_state_sp(state);
++			unsigned int bt_n = 0;
++			sleh_bt_str("WT86047 BT pc=");
++			sleh_bt_hex(get_saved_state_pc(state));
++			sleh_bt_str(" sp=");
++			sleh_bt_hex(bt_sp);
++			sleh_bt_str("\n");
++			for (unsigned int bt_i = 0; bt_i < 48 && bt_n < 12; bt_i++) {
++				if (bt_sp < 0xfffffff000000000ULL || (bt_sp & 7) != 0) {
++					break;
++				}
++				uint64_t bt_v = *(volatile uint64_t *)(bt_sp + bt_i * 8);
++				if (bt_v >= 0xfffffff007004000ULL && bt_v < 0xfffffff007b7c000ULL) {
++					sleh_bt_hex(bt_v);
++					sleh_bt_str(" ");
++					if ((++bt_n & 1) == 0) {
++						sleh_bt_str("\n");
++					}
 +				}
 +			}
++			sleh_bt_str("\n");
 +		}
-+		printf("\n");
 +	}
 +#endif
 +
