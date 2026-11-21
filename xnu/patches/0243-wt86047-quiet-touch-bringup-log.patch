@@ -1,0 +1,21 @@
+diff --git a/bsd/dev/wt86047_sdhci.c b/bsd/dev/wt86047_sdhci.c
+--- a/bsd/dev/wt86047_sdhci.c
++++ b/bsd/dev/wt86047_sdhci.c
+@@ -4544,7 +4544,7 @@
+ 	for (;;) {
+ 		/* One-line status every 2 s: a single photo of the boot
+ 		 * console shows exactly where the touch bring-up stands. */
+-		if ((tick % 200) == 0) {
++		if (tick < 601 && (tick % 200) == 0) {
+ 			printf("WT86047 DIAG: rpm ch=%d open=%d L10=%d L5=%d "
+ 			    "rxst=%u fifo h/t=%u,%u pmicL5=%02x pmicL10=%02x "
+ 			    "probe=%d nack=%u bad=%u rep=%u\n",
+@@ -4640,7 +4640,7 @@
+ 				}
+ 			} else if (npts == -1) {
+ 				nack++;
+-				if (nack <= 5 || (nack % 500) == 0) {
++				if (nack <= 5) {
+ 					printf("WT86047 TOUCH: I2C %s stage=%s reg=%#x "
+ 					    "byte=%u (total %u)\n", wt86047_i2c_diag.error,
+ 					    wt86047_i2c_diag.stage, wt86047_i2c_diag.reg,
