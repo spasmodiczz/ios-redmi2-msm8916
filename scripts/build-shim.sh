@@ -18,7 +18,7 @@
 #
 # 环境变量：
 #   PROBE=1        出帧缓冲探针镜像
-#   PERSISTLOG=1   加 sweetlog=1（0143 的 4 MiB 环写进 system 分区开头 8193 扇区）
+#   PERSISTLOG=1   加 sweetlog=1（0253 的 16 MiB 环写进 system 分区开头 32769 扇区）
 #   SWEET_D22AP_ADT=<path>  iPhone X 设备树，供 mkadt.py 生成 /product 节点
 set -euo pipefail
 
@@ -107,9 +107,9 @@ $CC -target arm64-apple-ios16.0 -c ../tools/wt86047-init.S -o out/init.o 2>/dev/
 python3 ../tools/mkinit.py out/init.o out/init.macho
 
 # ---------------------------------------------------------------- 命令行
-# 注意 sweetlog 不在默认值里：0143 的日志线程会把 4 MiB 环写进 "system" 分区
-# 开头 8193 个扇区。默认关闭，任何一次普通启动（含阶段 2 的只读门）才不会写盘。
-# 需要持久日志时显式 PERSISTLOG=1。
+# 注意 sweetlog 不在默认值里：0253 的日志线程会把 16 MiB 环写进 "system" 分区
+# 开头 32769 个扇区。默认关闭，任何一次普通启动（含阶段 2 的只读门）才不会写盘。
+# 需要持久日志时显式 PERSISTLOG=1，之后用 tools/sweet-log-pull.sh 取回。
 CMDLINE="debug=0x14e serial=3 disable_kprintf_output=0 \
 sweetfb_native=1 sweetfb_noconsole=1 sweetfb_hz=30 sweetfb_stayon=1 sweethidtest=0 \
 cpus=1 sweetcpufreq=0 sweetbattery=0 \
@@ -124,7 +124,8 @@ if [ "${PERSISTLOG:-0}" = 1 ]; then
 		exit 1
 	fi
 	CMDLINE="$CMDLINE sweetlog=1"
-	echo "PERSISTLOG=1：会写 system 分区开头 8193 扇区（4 MiB）"
+	echo "PERSISTLOG=1：会写 system 分区开头 32769 扇区（16 MiB 环 + 512B 头）"
+	echo "  取回：fastboot boot twrp.img 后 sh ios-santoni/tools/sweet-log-pull.sh log.txt"
 fi
 
 # 根设备三档：
