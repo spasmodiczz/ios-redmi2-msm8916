@@ -1,25 +1,24 @@
 --- a/osfmk/vm/vm_shared_region.c
 +++ b/osfmk/vm/vm_shared_region.c
-@@ -2254,6 +2254,22 @@
- 	ipc_port_t              sr_handle;
- 	vm_prot_t               cur_prot, max_prot;
- 	vm_map_kernel_flags_t   vmk_flags;
+@@ -2459,6 +2459,21 @@
+ 	if (kr == KERN_SUCCESS) {
+ 		/* let the task use that shared region */
+ 		vm_shared_region_set(task, shared_region);
 +#if defined(ARM64_BOARD_CONFIG_WT86047)
-+	/*
-+	 * SWEET: PAGE_SHIFT is a runtime variable and VM_MAP_PAGE_SHIFT(map) is
-+	 * whatever load_machfile installed (0248). Print both, once, in the band
-+	 * that never scrolls: that pair says whether the 4 KiB user map actually
-+	 * reached the shared region.
-+	 * wt86047_sr_band() comes from 0246.
-+	 */
-+	static int wt86047_shift_reported = 0;
++		/*
++		 * SWEET: print the address the shared region actually landed on. The
++		 * dyld shared cache is expected at sharedRegionStart (0x180000000)
++		 * but the region can be slid; without this the faulting PC cannot be
++		 * translated to a cache file offset. PAGE_SHIFT and the map shift are
++		 * known to be 12 by now, so the band is free for this.
++		 */
++		{
++			uint64_t sweet_sr_base = (uint64_t)shared_region->sr_base_address;
 +
-+	if (wt86047_shift_reported == 0) {
-+		wt86047_shift_reported = 1;
-+		wt86047_sr_band(0, "PS", (unsigned int)PAGE_SHIFT);
-+		wt86047_sr_band(1, "MP", (unsigned int)VM_MAP_PAGE_SHIFT(map));
-+	}
++			wt86047_sr_band(0, "B0", (unsigned int)(sweet_sr_base & 0xffffffffULL));
++			wt86047_sr_band(1, "B1", (unsigned int)(sweet_sr_base >> 32));
++		}
 +#endif /* ARM64_BOARD_CONFIG_WT86047 */
- 
- 	SHARED_REGION_TRACE_DEBUG(
- 		("shared_region: -> "
+ 	} else {
+ 		/* drop our reference since we're not using it */
+ 		vm_shared_region_deallocate(shared_region);
