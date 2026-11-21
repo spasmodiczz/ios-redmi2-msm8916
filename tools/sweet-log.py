@@ -23,6 +23,7 @@ Sweet (patch 0047):
 Boot boundaries are lines the kernel injects at every start:
   === WT86047LOG boot 7 continued, resume 0x1a2b3c, carried 40960 B, ... ===
 """
+import re
 import struct
 import sys
 import zlib
@@ -34,7 +35,9 @@ SWEET_HEADER = struct.Struct('<8sIIQQ')
 
 DEFAULT_RING = 8 << 20       # v1 / Santoni ring, when the header is unreadable
 V2_RING_HINT = 16 << 20      # only used to size a read of a blank partition
-BOOT_PREFIX = '=== WT86047LOG boot '
+# The kernel builds this line piecewise, so the compiler is free to store the
+# trailing space separately; accept the marker with or without it.
+BOOT_RE = re.compile(r'^=== WT86047LOG boot\s*(\d+)')
 
 
 def magic_string(magic):
@@ -83,11 +86,16 @@ def parse(data):
     return size, total, magic_string(magic), hdr, info
 
 
+def boot_number(line):
+    match = BOOT_RE.match(line)
+    return int(match.group(1)) if match else None
+
+
 def split_boots(text):
     """[(label, [lines])]; text before the first marker becomes its own part."""
     segs, cur = [], None
     for line in text.split('\n'):
-        if line.startswith(BOOT_PREFIX):
+        if boot_number(line) is not None:
             cur = []
             segs.append((line.strip(), cur))
             continue
@@ -168,8 +176,8 @@ def main(argv):
         return 0
 
     if want_boot is not None:
-        key = '%s%u ' % (BOOT_PREFIX, want_boot)
-        picked = [lines for label, lines in segs if label.startswith(key)]
+        picked = [lines for label, lines in segs
+                  if boot_number(label) == want_boot]
         if not picked:
             sys.exit('boot %u not found in this dump' % want_boot)
         out = '\n'.join(picked[0])
