@@ -1,0 +1,23 @@
+--- a/osfmk/kern/task.c
++++ b/osfmk/kern/task.c
+@@ -1398,6 +1398,20 @@
+ #endif /* CONFIG_DEFERRED_RECLAIM */
+ 	} else {
+ 		unsigned int pmap_flags = is_64bit ? PMAP_CREATE_64BIT : 0;
++#if defined(ARM64_BOARD_CONFIG_WT86047)
++		/*
++		 * SWEET: the kernel translates 4 KiB pages (PAGE_SHIFT == 12), but
++		 * PMAP_CREATE_64BIT alone gives a 16 KiB user address space. The
++		 * mismatch is what corrupts the dyld shared cache mapping: the
++		 * shared region sub map is 16 KiB while the pmap below it is 4 KiB,
++		 * so dyld's 4 KiB-correct mappings land on the wrong file offsets
++		 * and the first branch through the cache executes data.
++		 * Ask for a 4 KiB pmap so the whole user address space matches the
++		 * kernel's granule. PMAP_CREATE_FORCE_4K_PAGES is honoured under
++		 * __ARM_MIXED_PAGE_SIZE__, which 0248 enables.
++		 */
++		pmap_flags |= PMAP_CREATE_FORCE_4K_PAGES;
++#endif /* ARM64_BOARD_CONFIG_WT86047 */
+ 		pmap_t pmap = pmap_create_options(ledger, 0, pmap_flags);
+ 		vm_map_t new_map;
+ 
