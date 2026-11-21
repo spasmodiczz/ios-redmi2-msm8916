@@ -96,12 +96,13 @@ index 6928957..6b7d3a4 100644
  }
  
  void
-@@ -64,6 +93,15 @@
+@@ -64,6 +93,16 @@
  	const unsigned char *glyph = iso_font + (unsigned char)c * 16;
  	for (unsigned int gy = 0; gy < 16; gy++) {
  		for (unsigned int sy = 0; sy < EARLY_SCALE; sy++) {
 +#if defined(WT86047)
-+			unsigned int py = early_row * EARLY_CELL_H + gy / 2;
++			unsigned int py = early_row * EARLY_CELL_H +
++			    (gy * EARLY_SCALE + sy) / 2;
 +			for (unsigned int gx = 0; gx < 8; gx++) {
 +				uint32_t pixel = (glyph[gy] & (1u << gx)) ? 0x00ffffffu : 0x00000000u;
 +				for (unsigned int sx = 0; sx < EARLY_SCALE; sx++) {
