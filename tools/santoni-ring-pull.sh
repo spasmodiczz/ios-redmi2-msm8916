@@ -4,7 +4,8 @@
 #   tools/santoni-ring-pull.sh [OUT_BASENAME]
 #
 # Writes OUT_BASENAME.bin (8193 x 512 B = 4 MiB + one header sector) and, if the
-# SANTONILOG1 header is present, OUT_BASENAME.txt (decoded console text).
+# SANTONILOG1 (or WT86047LOG1 on wt86047) header is present, OUT_BASENAME.txt
+# (decoded console text).
 #
 # Run this from TWRP, or from rooted Android after `adb root`. It never writes
 # to the phone and never formats anything.
@@ -65,13 +66,15 @@ if [ "$bytes" != "4194816" ]; then
 fi
 
 magic=$(dd if="$out.bin" bs=1 count=12 2>/dev/null || true)
-if [ "$magic" = "SANTONILOG1" ]; then
-	say "SANTONILOG1 header found; decoding..."
+case "$magic" in
+SANTONILOG1|WT86047LOG1)
+	say "$magic header found; decoding..."
 	python3 tools/sweet-log.py "$out.bin" "$out.txt"
 	say "Wrote $out.txt"
 	say "Send me $out.txt (and $out.bin if the text looks truncated)."
-else
-	say "No SANTONILOG1 header in the first 12 bytes."
+	;;
+*)
+	say "No SANTONILOG1 / WT86047LOG1 header in the first 12 bytes."
 	say "First 64 bytes:"
 	od -An -tx1 -N64 "$out.bin" >&2 || true
 	say "Do NOT format system. Send me:"
@@ -79,4 +82,5 @@ else
 	say "  adb shell 'ls -l /dev/block/bootdevice/by-name/'"
 	say "  adb shell 'cat /proc/partitions'"
 	exit 4
-fi
+	;;
+esac

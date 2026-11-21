@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Build the minimal Apple Device Tree that the SANTONI xnu needs to boot.
+"""Build the minimal Apple Device Tree that the wt86047 xnu needs to boot.
 
 Only what the early boot path actually reads; every MMIO
-address comes from the santoni (Redmi 4X, MSM8937) live FDT.
-Usage:  mkadt.py OUT.adt [--dump] [--qemu] [--native]
+address comes from the wt86047 (Redmi 2, MSM8916) live FDT.
+Usage:  mkadt.py OUT.adt [--dump] [--qemu] [--native] | --print-hash
 """
 import hashlib, os, struct, sys
 
@@ -40,7 +40,14 @@ BOOT_MANIFEST_HASH = hashlib.sha384(b'santoni boot manifest').digest()
 # an Apple artifact (kept out of git): extract it from the IPSW with
 #   tools/remotezip.py URL DeviceTree.d22ap.im4p DIR
 #   ipsw img4 im4p extract DIR/Firmware/all_flash/DeviceTree.d22ap.im4p -o d22ap.adt
-D22AP_ADT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../research/ipsw-x/d22ap.adt')
+#
+# The default is relative to *this file*, which is wrong once build-shim.sh has
+# copied tools/ into build/wt86047/ (the tree is then read from
+# build/wt86047/research/ipsw-x/ and a copy in ios-santoni/research/ is never
+# seen). SWEET_D22AP_ADT lets the build point at the real location.
+D22AP_ADT = os.environ.get(
+    'SWEET_D22AP_ADT',
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), '../research/ipsw-x/d22ap.adt'))
 
 
 def d22ap_product(path=D22AP_ADT):
@@ -203,13 +210,18 @@ def build(seed=None, qemu=False, native=False):
         ('depth', u32(24)),
     ])
 
-    # Internal eMMC 5.1 controller (SDCC1) for bsd/dev/santoni_sdhci.c. At the
+    # Internal eMMC 5.1 controller (SDCC1) for bsd/dev/wt86047_sdhci.c. At the
     # root, like /sweet-ufs, so reg[] is an absolute physical address and not
     # translated by /arm-io's "ranges". The 0x1000 window starting at the
     # Qualcomm core block also contains the standard SDHCI host controller
     # registers at 0x07824900 (+0x900, 0x500 bytes); hc-reg mirrors the
     # msm8937.dtsi sdhc_1 split for documentation.
-    sdhci = node('santoni-sdhci', [
+    #
+    # The node name is load-bearing: wt86047_sdhci_init() does
+    # SecureDTLookupEntry(NULL, "/wt86047-sdhci", &node) and bails with ENXIO
+    # (so the driver never registers and no eMMC device appears) on any other
+    # name. It used to be 'santoni-sdhci', inherited from the Redmi 4X port.
+    sdhci = node('wt86047-sdhci', [
         ph(),
         ('compatible', cstr('qcom,sdhci-msm-v4') + cstr('generic-sdhci')),
         ('device_type', cstr('sdhci')),
@@ -258,8 +270,15 @@ def build(seed=None, qemu=False, native=False):
 
 
 if __name__ == '__main__':
+    # --print-hash: the value /sbin/mount -P 1 expects as
+    # /private/preboot/<hex> must equal /chosen/boot-manifest-hash. tools/
+    # mkiosroot.sh creates that directory, so it asks us instead of
+    # duplicating the digest and silently drifting out of sync.
+    if '--print-hash' in sys.argv:
+        print(BOOT_MANIFEST_HASH.hex().upper())
+        sys.exit(0)
     if len(sys.argv) < 2:
-        print("Usage: mkadt.py OUT.adt [--dump] [--qemu] [--native]", file=sys.stderr)
+        print("Usage: mkadt.py OUT.adt [--dump] [--qemu] [--native] | --print-hash", file=sys.stderr)
         sys.exit(1)
     root = build(qemu='--qemu' in sys.argv, native='--native' in sys.argv)
     blob = adt.serialize(root)
