@@ -17,10 +17,10 @@ index 6928957..6b7d3a4 100644
 +#define EARLY_CELL_H (16u * EARLY_SCALE)
 +#define EARLY_ROWS ((EARLY_H - 32u) / EARLY_CELL_H) /* keep the mark band */
 +/*
-+ * Measured on the panel: this console renders ~8-9 cells to the right of the
-+ * buffer origin that the stage-mark band uses, so a full 90-column row runs
-+ * 71 px past the right edge and loses its last 8 characters. Cap the wrap at
-+ * 81 columns (648 px) so every line fits inside the 720 px row.
++ * Measured on the panel: post-TTBR0 output rendered 8 cells right of the
++ * pre-TTBR0 output, so a 90-column row overshot the 720 px row by the same
++ * amount. The base bias above removes the shift; 88 columns (704 px) leaves a
++ * small safety margin at the right edge instead of relying on an exact fit.
 + */
 +/*
 + * Measured on the panel: post-TTBR0 output lands 74 px (9 cells, 222 bytes)
@@ -29,8 +29,8 @@ index 6928957..6b7d3a4 100644
 + * base back by that bias so the text starts at column 0. If the log ever
 + * loses its first ~9 characters instead, this value is too large.
 + */
-+#define WT86047_FB_X_BIAS 222u
-+#define EARLY_COLS 81u
++#define WT86047_FB_X_BIAS 192u /* exactly 8 cells: 64 px, 192 bytes */
++#define EARLY_COLS 88u
 +
 +static inline void early_pixel24(unsigned int x, unsigned int y, uint32_t c) {
 +	if (x >= EARLY_W || y >= EARLY_H) return;
