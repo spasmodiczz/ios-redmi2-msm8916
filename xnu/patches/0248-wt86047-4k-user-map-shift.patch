@@ -1,0 +1,23 @@
+--- a/bsd/kern/mach_loader.c
++++ b/bsd/kern/mach_loader.c
+@@ -509,8 +509,20 @@
+ 
+ #if defined(__arm64__)
+ 	if (result->is_64bit_addr) {
++#if defined(ARM64_BOARD_CONFIG_WT86047)
++		/*
++		 * SWEET: this kernel translates 4 KiB pages and userland is told 4 KiB
++		 * through the commpage (0249). Ask for a 4 KiB user map so the shared
++		 * region sub map (0251), the pmap and every file-backed mapping share
++		 * one granularity. With a 16 KiB map on a 4 KiB pmap the dyld shared
++		 * cache is mapped from the wrong file offsets and the first branch
++		 * through it executes data.
++		 */
++		vm_map_set_page_shift(map, FOURK_PAGE_SHIFT);
++#else
+ 		/* enforce 16KB alignment of VM map entries */
+ 		vm_map_set_page_shift(map, SIXTEENK_PAGE_SHIFT);
++#endif /* ARM64_BOARD_CONFIG_WT86047 */
+ 	} else {
+ 		vm_map_set_page_shift(map, page_shift_user32);
+ 	}

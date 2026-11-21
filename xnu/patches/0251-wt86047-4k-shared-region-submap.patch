@@ -1,0 +1,24 @@
+--- a/osfmk/vm/vm_shared_region.c
++++ b/osfmk/vm/vm_shared_region.c
+@@ -774,11 +774,21 @@
+ 			sub_map = vm_map_create_options(pmap_nested, 0,
+ 			    (vm_map_offset_t)size, VM_MAP_CREATE_PAGEABLE);
+ 
++#if defined(ARM64_BOARD_CONFIG_WT86047)
++			/*
++			 * SWEET: match the 4 KiB user map installed by mach_loader (0248) and
++			 * the 4 KiB pmap underneath. Forcing this alone returns
++			 * KERN_INVALID_ARGUMENT from vm_map_enter_mem_object, because the task
++			 * map would still be 16 KiB.
++			 */
++			vm_map_set_page_shift(sub_map, FOURK_PAGE_SHIFT);
++#else
+ 			if (is_64bit ||
+ 			    page_shift_user32 == SIXTEENK_PAGE_SHIFT) {
+ 				/* enforce 16KB alignment of VM map entries */
+ 				vm_map_set_page_shift(sub_map, SIXTEENK_PAGE_SHIFT);
+ 			}
++#endif /* ARM64_BOARD_CONFIG_WT86047 */
+ #if __ARM_MIXED_PAGE_SIZE__
+ 			if (cputype == CPU_TYPE_ARM64 &&
+ 			    target_page_shift == FOURK_PAGE_SHIFT) {
