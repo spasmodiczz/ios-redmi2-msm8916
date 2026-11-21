@@ -293,3 +293,51 @@ static inline struct debugger_state *current_debugger_state(void)
 
 `symbolize.py` 的已知缺陷：`__TEXT_EXEC` 里有些区间没有独立符号，会落到
 `__doprnt.digits + 大偏移` 这种无意义结果。忽略这类行，不要被误导。
+
+---
+
+## 更新 2026-11-21 17:05 — 上一个修复本身把内核崩了（已回退）
+
+### 事实
+
+崩溃地址符号化后指向我自己的补丁：
+
+```
+lr = 0xfffffff007449f48 -> _ml_set_max_cpus + 0x17
+pc = el1_sp0_synchronous_vector_long + 0x33     （二次故障，发生在向量入口）
+esr = 0x96000005   far = 0x158                  （NULL + 0x158 缺页）
+```
+
+`ml_set_max_cpus()` 的第一句是 `lck_mtx_lock(&max_cpus_lock)`，而 `arm_init()` 在
+互斥锁/线程机制建立之前运行 —— 早期拿锁必然缺页。
+
+### 现在的做法（提交 `6aef2b3`，补丁 `0242`）
+
+1. `0010` 删掉 `ml_set_max_cpus(1)` 调用（连带清掉一处多余 `#endif`）。
+2. 新增 `0242`：`ml_wait_max_cpus()` 在 `machine_info.max_cpus <= 1` 时直接
+   `return machine_info.max_cpus` —— 既不等，也不碰锁。
+   `kperf_init_early()` 忽略返回值，`max_cpus_initialized` 无其他读者。
+
+### 验证流程的新坑：本地补丁是 CRLF
+
+`git apply` 在本地对所有补丁都失败（`patch does not apply`），因为工作区里的补丁文件是
+**CRLF**（Windows 检出），而目标源码是 **LF** —— 每个上下文行都多一个 CR。CI 上是 LF，
+所以只在本地假失败。**验证前先把补丁复制成 LF 再 `git apply`**（`\r\n` → `\n` 后存到
+`D:/wt-tmp/p3/`）。
+
+### 仍未验证
+
+`0241`（`socd_client_trace` 在无线程时直接返回）**尚未在真机上生效过** —— 这次崩溃点更早，
+根本没走到它。下一轮才能确认。
+
+### 已知小毛病
+
+底部 32px 固定带只有 2 行，第 1 行（地址行）会被 `sweet_early_mark` 的彩色块覆盖，
+所以照片上只看到 `BT pc=… sp=…` 一行。修法是让 mark 只画带子左半，或把 BT 行上移到
+日志区最后两行；等真需要读地址时再改。
+
+### 必读文档（每次开工先读）
+
+- `.workbuddy/memory/MEMORY.md` —— 长期要点与硬规则
+- `.workbuddy/memory/2026-11-21.md` —— 当天踩坑记录
+- 本文件 —— 接续入口；`STATE.md` / `HANDOFF-阶段2.md` —— 详细历史与交接
