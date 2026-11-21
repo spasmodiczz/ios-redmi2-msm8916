@@ -1,28 +1,34 @@
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
-@@ -1105,6 +1105,29 @@
+@@ -1105,6 +1105,35 @@
  		}
  	}
  
 +#if defined(WT86047)
 +	/*
-+	 * SWEET: user-mode undefined instruction. The panic that follows only
-+	 * carries a signal number, so log the first few occurrences verbatim:
-+	 * the faulting PC, its caller and the instruction word are the only
-+	 * data that identifies the culprit on an 18-line console.
++	 * SWEET: user-mode undefined instruction. Print the faulting PC, its
++	 * caller, the instruction word and the physical pages backing PC and
++	 * PC+PAGE_SIZE. Identical pp for the two addresses means distinct
++	 * virtual pages are aliased onto one physical page, which is what makes
++	 * the same wrong instruction appear at unrelated addresses.
 +	 * instr was already fetched by COPYIN above, so nothing here can fault.
 +	 */
 +	{
++		extern ppnum_t pmap_find_phys(pmap_t map, addr64_t va);
 +		static unsigned int sweet_sigill_seen = 0;
 +
 +		if (sweet_sigill_seen < 8) {
++			vm_offset_t sweet_pc = get_saved_state_pc(state);
++			ppnum_t sweet_pp = pmap_find_phys(current_map()->pmap, (addr64_t)sweet_pc);
++			ppnum_t sweet_pp2 = pmap_find_phys(current_map()->pmap,
++			    (addr64_t)(sweet_pc + PAGE_SIZE));
++
 +			sweet_sigill_seen++;
-+			printf("SWEET SIGILL #%u pc=%p lr=%p sp=%p instr=%08x\n",
++			printf("SWEET SIGILL #%u pc=%p lr=%p i=%08x pp=%x pp2=%x\n",
 +			    sweet_sigill_seen,
-+			    (void *)get_saved_state_pc(state),
++			    (void *)sweet_pc,
 +			    (void *)get_saved_state_lr(state),
-+			    (void *)get_saved_state_sp(state),
-+			    instr);
++			    instr, sweet_pp, sweet_pp2);
 +		}
 +	}
 +#endif /* WT86047 */
