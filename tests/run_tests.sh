@@ -385,4 +385,8 @@ else
 fi
 
 
+echo "== WT86047-LOG: SYSTEM console log (0253) decoder and ring model =="
+python3 tests/test_wt86047_log_decode.py
+python3 tests/test_wt86047_log_ring.py
+
 echo "run_tests: all hosts tests, patch checks and shipped-code assertions passed"
