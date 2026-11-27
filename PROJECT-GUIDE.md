@@ -532,6 +532,78 @@ FB: swap 4800 layer 0 surface 2 1125x2436 ... b 0,0 1125x2436
 2. 在拷贝路径上做一次 CPU 缩放，把 1125×2436 压进 720×320（能看全貌，但底部一条、
    非等比），或在 canvas 层面直接选一个与面板同比例的小尺寸。
 
+**boot 20（2026-11-28 01:47，`sweetfb_fit=1`）**：`[实测]` 摄像头确认整幅画布被垂直压缩后
+显示在面板**顶部** 320 行（其余区域仍是 LK 的 fastboot 残留画面）。两点结论：
+- `0259` 的缩放生效，整屏内容确实都在正常渲染；
+- **320 行窗口落在物理屏幕顶部**，不是此前假设的底部 —— 换成整屏 720×1280 后若出现上下翻转，
+  需要在 `blitPanel()` 里补一次行序反转。
+
+**迁移进度实测（2026-11-28 01:57–03:06，同一 boot）**：`[实测]` 用摄像头 + `tmp/bar.sh`
+量化进度条长度（左端固定、右端增长）：
+```
+01:57 260  02:09 304  02:21 353  02:33 373  02:46 384  02:58 384
+02:01 261  02:13 321  02:25 362  02:38 379  02:50 385  03:02 386
+```
+前 45 分钟稳定推进（+126 px），随后在 **384–386 px 抖动近 20 分钟不动** → 判定**迁移卡在末尾**。
+参考手记里同阶段的失败模式是 `installcoordinationd` 报
+`Failed to create data directory EACCES for /private/var/containers/...`；本镜像确实**没有**
+`/private/var/containers`。下一步要给根镜像补 `containers/{Bundle,Data/System,Shared/SystemGroup,Temp}`
+以及迁移/Setup 标记，而不是继续等。
+
+**判定纪律（2026-11-28 03:20，两次误判后补充，务必遵守）**：
+1. **解码出的某次启动，先看它的第一个 `[WT86047 t=...]` 时间戳。** boot 21 的日志从
+   **t=74.67 s** 开始（前 74 秒不在保留段里），据此断言「没有 `SWEET FB` / `AppleCLCD`」
+   是错的——`IOCoreSurfaceRoot registered` 在 boot 20 里正好是 t=76.6 s。凡首时间戳 > 10 s，
+   该启动的早期事实一律视为**未知**，不能当「不存在」。
+2. **摄像头只能做粗判**（屏幕是否有内容、大致位置、是否全屏覆盖）。分辨率不足以读文字，
+   把模糊像素当字读会直接产生幻觉。任何文字结论必须来自内核日志。
+3. 结论要写成「实测」时必须能指到日志行；否则写「推断」。
+
+**日志读取的两个真实故障（2026-11-28 03:50，已修）**：`[实测]`
+1. `sweet-log-pull.sh` 用单次 `adb dd` 读 16 MiB 环，会**短读**（曾只返回 9,527,xxx / 16,777,728 字节）
+   却继续往下解码 —— 最新的那次启动被截断，于是「`AppleCLCD` 不存在」这种结论完全是假的。
+   现改为 2 MiB 分块 + 短块重试 + 失败即停。`tmp/auto-log.sh` 也会在短读时直接中止。
+2. `sweet-log.py --boot N` 的**分段不严格按时间**（boot 20 的解码末尾竟是早期 SDHCI 枚举），
+   按段做「有无某行」的判断不可靠。改用 `tmp/ring-peek.py`：直接在原始环里搜关键串，
+   并用最近的 `WT86047 LOG ... boot N` 标记归属，同时打印最新启动的尾部。
+
+**显示几何的三个旋钮（改 `build-shim.sh` 环境变量即可，不需要重编内核）**：
+| 变量 | 作用 |
+|---|---|
+| `SWEET_FB_NATIVE` | 0/1，同时决定 cmdline 的 `sweetfb_native=` 与 mkadt 的 `--native`，两者必须一致 |
+| `SWEET_FB_PANEL` | `WxH` 或 `WxH@ROW`，决定 `sweet-fbcon` 的窗口大小与起始行 |
+| `SWEET_FB_HZ` | `blitPanel()` 的扫描频率，整屏时转换开销是 320 行的 4 倍 |
+
+`720x320@960` 精确复现旧默认（`0x831fa400`），用作偏移算式的自检。
+
+**整屏尝试的现状**：把 `sweet-fbcon` 设为 `0x83000000` / 720×1280 后，系统仍能 `Early boot complete`、
+`exec backboardd`，但**整次启动没有任何显示日志**（`AppleCLCD`、`IOCoreSurfaceRoot`、`FBSURF` 全无），
+面板缓冲也不会被覆盖（摄像头可见 LK 的旧画面完好）。ADT 本身经核对含 `sweet,display`、
+`display-subsystem`、`canvas-*`，`sweet-fbcon` 的 reg/height 也确为整屏值。
+因此不是 ADT 问题，需要内核埋点定位 —— `0260`（`AppleCLCD::start` 入口 + PE video 实测值）就是为此加的。
+
+**整屏几何已解决（2026-11-28 04:57，`0260` + `0261`）**：`[实测]`
+- `0260` 埋点定性：`AppleCLCD::start enter provider=disp0` —— **驱动匹配正常**；
+  但在 ADT 已含整屏 `sweet-fbcon` 的镜像上，`boot video phys` 仍报 `0x831fa400 720x320`。
+  **结论：PE_Video 由引导器（LK）填入，ADT 的 `sweet-fbcon` 只能喂控制台**，所以
+  此前所有靠改 ADT 的「整屏」尝试都是死路（这也解释了它们为何静默退回 320 行）。
+- `0261` 在驱动里覆盖：`panel override rows 320 row 960: base 0x831fa400 -> 0x83000000,
+  height 320 -> 1280`，随后 `AppleCLCD 720x1280 panel stride 2160 24-bpp at 0x83000000,
+  frame stride 2880, presented as 720x1280`。几何**完全正确**。
+
+**新的卡点：backboardd 不再使用显示（boots 21–25）**：`[实测]`
+`present()` 未被调用（`SWEET FB: swap` = 0），`IOMobileFramebuffer` 查找 = 0，而 `exec backboardd`
+有、`IOCoreSurfaceRoot registered` 有、`Early boot complete` 有。boot 24 跑到 t=265 s，不是时间不够。
+`blitPanel()` 只在 `present()` 里调用，所以面板缓冲永远不会被刷 —— 屏幕上仍是 LK 的旧画面。
+
+**已验证可用的最后配置（boot 20）**：`native=0` + `sweetfb_fit=1`，出帧 **196,200** 次、
+`SWEET FBSURF id 1 720x320 ... lit 929 of 14400`（内容确实到过面板）。恢复命令：
+`SWEET_FB_NATIVE=0 SWEET_CMDLINE_EXTRA='... sweetfb_fit=1'`（zài 默认 320 行 ADT 上）。
+
+**下一步要查的**：为什么 `native=1` / 整屏 override 之后 backboardd 跳过显示初始化。
+建议在 `IOMobileFramebufferUserClient::initWithTask` 与 `AppleCLCD::addClient` 加埋点，
+并对比 boot 20 与 boot 24 的 backboardd IOK `sweetiolog` 序列。
+
 **设备操作纠正（2026-11-27，实测）**：`fastboot reboot recovery` 返回 OKAY 但不进 recovery；
 `fastboot oem reboot-recovery` 报 `unknown command`；`fastboot boot <img>` **可用但要求纯 ASCII 路径**
 （中文文件名会导致失败），把 TWRP 复制成 `tmp/twrp.img` 即可；`fastboot boot` 传输中断后
