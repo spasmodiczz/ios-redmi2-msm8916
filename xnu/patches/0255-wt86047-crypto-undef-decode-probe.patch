@@ -1,8 +1,26 @@
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
-index 4321dfe..d3a2a0a 100755
+index 4321dfe..9b0e90a 100755
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
-@@ -1022,6 +1022,661 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
+@@ -822,7 +822,7 @@ sleh_synchronous(arm_context_t *context, uint32_t esr, vm_offset_t far)
+ 	case ESR_EC_UNCATEGORIZED:
+ 		assert(!ESR_ISS(esr));
+ 
+-		handle_uncategorized(&context->ss);
++		handle_uncategorized(context);
+ 		break;
+ 
+ 	case ESR_EC_SP_ALIGN:
+@@ -923,7 +923,7 @@ sleh_synchronous(arm_context_t *context, uint32_t esr, vm_offset_t far)
+ 		__builtin_unreachable();
+ 
+ 	default:
+-		handle_uncategorized(state);
++		handle_uncategorized(context);
+ 	}
+ 
+ #ifdef CONFIG_XNUPOST
+@@ -1022,13 +1022,626 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
  }
  #endif /* SWEET */
  
@@ -99,63 +117,18 @@ index 4321dfe..d3a2a0a 100755
 + * far (boot 10: three aese + three aesmc at image +0x900/+0x904). The state is
 + * column major: vector byte i is state row (i & 3), column (i >> 2), exactly
 + * how the architecture numbers it. Everything below is plain C on a 16-byte
-+ * array; the vector registers are only touched by sweet_vsave/vrestore.
++ * array; the vector state is read from, and written to, the NEON part of the
++ * exception context (see sweet_crypto_emu_probe).
 + */
 +
-+struct sweet_vregs {
-+	uint64_t q[32][2];
-+} __attribute__((aligned(16)));
-+
-+#if defined(__aarch64__)
-+static void
-+sweet_vsave(struct sweet_vregs *v)
-+{
-+	__asm__ __volatile__(
-+	    "stp q0,  q1,  [%0, #0]\n\t"
-+	    "stp q2,  q3,  [%0, #32]\n\t"
-+	    "stp q4,  q5,  [%0, #64]\n\t"
-+	    "stp q6,  q7,  [%0, #96]\n\t"
-+	    "stp q8,  q9,  [%0, #128]\n\t"
-+	    "stp q10, q11, [%0, #160]\n\t"
-+	    "stp q12, q13, [%0, #192]\n\t"
-+	    "stp q14, q15, [%0, #224]\n\t"
-+	    "stp q16, q17, [%0, #256]\n\t"
-+	    "stp q18, q19, [%0, #288]\n\t"
-+	    "stp q20, q21, [%0, #320]\n\t"
-+	    "stp q22, q23, [%0, #352]\n\t"
-+	    "stp q24, q25, [%0, #384]\n\t"
-+	    "stp q26, q27, [%0, #416]\n\t"
-+	    "stp q28, q29, [%0, #448]\n\t"
-+	    "stp q30, q31, [%0, #480]\n\t"
-+	    : : "r"(v) : "memory");
-+}
-+
-+static void
-+sweet_vrestore(const struct sweet_vregs *v)
-+{
-+	__asm__ __volatile__(
-+	    "ldp q0,  q1,  [%0, #0]\n\t"
-+	    "ldp q2,  q3,  [%0, #32]\n\t"
-+	    "ldp q4,  q5,  [%0, #64]\n\t"
-+	    "ldp q6,  q7,  [%0, #96]\n\t"
-+	    "ldp q8,  q9,  [%0, #128]\n\t"
-+	    "ldp q10, q11, [%0, #160]\n\t"
-+	    "ldp q12, q13, [%0, #192]\n\t"
-+	    "ldp q14, q15, [%0, #224]\n\t"
-+	    "ldp q16, q17, [%0, #256]\n\t"
-+	    "ldp q18, q19, [%0, #288]\n\t"
-+	    "ldp q20, q21, [%0, #320]\n\t"
-+	    "ldp q22, q23, [%0, #352]\n\t"
-+	    "ldp q24, q25, [%0, #384]\n\t"
-+	    "ldp q26, q27, [%0, #416]\n\t"
-+	    "ldp q28, q29, [%0, #448]\n\t"
-+	    "ldp q30, q31, [%0, #480]\n\t"
-+	    : : "r"(v) : "memory");
-+}
-+#else /* host test build: no vector registers */
-+static void sweet_vsave(struct sweet_vregs *v) { (void)v; }
-+static void sweet_vrestore(const struct sweet_vregs *v) { (void)v; }
-+#endif
++/*
++ * The vector registers must NOT be touched through the live architectural
++ * state: sleh_synchronous passes only &context->ss, the kernel saved the NEON
++ * registers into context->ns on exception entry and restores them on the way
++ * out, so anything written to q0..q31 directly is silently overwritten. Boot
++ * 13 proved that -- every aes/sha result was a no-op and all FIPS KATs failed.
++ * Read and write context->ns.ns_64.v.q[] instead.
++ */
 +
 +static uint8_t sweet_aes_sbox[256];
 +static uint8_t sweet_aes_inv_sbox[256];
@@ -571,7 +544,7 @@ index 4321dfe..d3a2a0a 100755
 +
 +/* Returns TRUE when this exception has already been dealt with. */
 +boolean_t
-+sweet_crypto_emu_probe(arm_saved_state_t *state, uint32_t instr)
++sweet_crypto_emu_probe(arm_context_t *context, uint32_t instr)
 +{
 +	const struct sweet_crypto_encoding *enc;
 +	boolean_t emulate;
@@ -595,7 +568,7 @@ index 4321dfe..d3a2a0a 100755
 +		printf("SWEET EMU %s/%s pc=%p vd=%u vn=%u vm=%d hits=%u mode=%u\n",
 +		    enc->name,
 +		    emulate ? "emul" : "skip",
-+		    (void *)get_saved_state_pc(state),
++		    (void *)get_saved_state_pc(&context->ss),
 +		    (unsigned)(instr & 0x1fu),
 +		    (unsigned)((instr >> 5) & 0x1fu),
 +		    (enc->nreg == 3) ? (int)((instr >> 16) & 0x1fu) : -1,
@@ -608,16 +581,19 @@ index 4321dfe..d3a2a0a 100755
 +	}
 +
 +	if (emulate) {
-+		struct sweet_vregs vr;
++		arm_neon_saved_state64_t *ns;
 +		unsigned vd = instr & 0x1fu;
 +		unsigned vn = (instr >> 5) & 0x1fu;
 +		unsigned vm = (instr >> 16) & 0x1fu;
 +		uint8_t *d, *n, *m;
 +
-+		sweet_vsave(&vr);
-+		d = (uint8_t *)&vr.q[vd];
-+		n = (uint8_t *)&vr.q[vn];
-+		m = (uint8_t *)&vr.q[vm];
++		if (!is_neon_saved_state64(&context->ns)) {
++			return FALSE;
++		}
++		ns = neon_state64(&context->ns);
++		d = (uint8_t *)&ns->v.q[vd];
++		n = (uint8_t *)&ns->v.q[vn];
++		m = (uint8_t *)&ns->v.q[vm];
 +
 +		switch (enc->op) {
 +		case SEO_AESE:
@@ -653,10 +629,9 @@ index 4321dfe..d3a2a0a 100755
 +		default:
 +			break;
 +		}
-+		sweet_vrestore(&vr);
 +	}
 +
-+	add_saved_state_pc(state, 4u);
++	add_saved_state_pc(&context->ss, 4u);
 +	return TRUE;
 +}
 +#endif /* ARM64_BOARD_CONFIG_WT86047 */
@@ -664,13 +639,22 @@ index 4321dfe..d3a2a0a 100755
  /*
   * Uncategorized exceptions are a catch-all for general execution errors.
   * ARM64_TODO: For now, we assume this is for undefined instruction exceptions.
-@@ -1036,6 +1691,13 @@ handle_uncategorized(arm_saved_state_t *state)
+  */
+ static void
+-handle_uncategorized(arm_saved_state_t *state)
++handle_uncategorized(arm_context_t *context)
+ {
++	arm_saved_state_t *state = &context->ss;
+ 	exception_type_t           exception = EXC_BAD_INSTRUCTION;
+ 	mach_exception_data_type_t codes[2]  = {EXC_ARM_UNDEFINED};
+ 	mach_msg_type_number_t     numcodes  = 2;
+@@ -1036,6 +1649,13 @@ handle_uncategorized(arm_saved_state_t *state)
  
  	COPYIN(get_saved_state_pc(state), (char *)&instr, sizeof(instr));
  
 +#if defined(ARM64_BOARD_CONFIG_WT86047)
 +	if (PSR64_IS_USER64(get_saved_state_cpsr(state)) &&
-+	    sweet_crypto_emu_probe(state, instr)) {
++	    sweet_crypto_emu_probe(context, instr)) {
 +		return;
 +	}
 +#endif /* ARM64_BOARD_CONFIG_WT86047 */
