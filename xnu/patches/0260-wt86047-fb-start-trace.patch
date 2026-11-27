@@ -1,0 +1,30 @@
+diff --git a/iokit/Kernel/arm/SweetFramebuffer.cpp b/iokit/Kernel/arm/SweetFramebuffer.cpp
+index e2a0139..4a56955 100644
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -276,12 +276,25 @@ AppleCLCD::start(IOService *provider)
+ {
+ 	PE_Video video;
+ 
++	/*
++	 * Trace the entry and the boot video mode. Every later failure path in
++	 * this function logs, so "no SWEET FB line at all" can only mean the
++	 * driver never matched; printing here separates that from a silent bail
++	 * before PE_current_console() has anything to say.
++	 */
++	IOLog("SWEET FB: AppleCLCD::start enter provider=%s\n",
++	    provider != NULL ? provider->getName() : "(null)");
+ 	if (!IOService::start(provider)) {
++		IOLog("SWEET FB: IOService::start failed\n");
+ 		return false;
+ 	}
+ 	topaz_modem_init();
+ 	sweet_busy_init();
+ 	PE_current_console(&video);
++	IOLog("SWEET FB: boot video phys 0x%llx %ux%u stride %u depth %llu\n",
++	    (unsigned long long)video.v_baseAddr, (unsigned)video.v_width,
++	    (unsigned)video.v_height, (unsigned)video.v_rowBytes,
++	    (unsigned long long)video.v_depth);
+ 	fPhys = video.v_baseAddr;
+ 	fWidth = (uint32_t)video.v_width;
+ 	fHeight = (uint32_t)video.v_height;
