@@ -1,8 +1,8 @@
 diff --git a/iokit/Kernel/arm/SweetFramebuffer.cpp b/iokit/Kernel/arm/SweetFramebuffer.cpp
-index 2899ef7..8bfadb6 100644
+index 2899ef7..bb8d647 100644
 --- a/iokit/Kernel/arm/SweetFramebuffer.cpp
 +++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
-@@ -615,6 +615,66 @@ get32(const uint8_t *p, uint32_t off)
+@@ -615,6 +615,70 @@ get32(const uint8_t *p, uint32_t off)
  
  static uint32_t sweet_fb_swaps_logged;
  
@@ -14,13 +14,17 @@ index 2899ef7..8bfadb6 100644
 + * This walks every live IOSurface and reports how many pixels are not black,
 + * which separates the two without a camera.
 + *
-+ *	sweetfbsurf=1	report at the first swaps and then every 300th
++ *	sweetfbsurf=1	report at the first swaps and then every 10th
++ *
++ * The cadence is deliberately tight: a stuck system presents only ~70 frames
++ * in five minutes, so an every-300th trigger would never fire late enough to
++ * see whether anything was drawn after the first seconds.
 + *
 + * Sampling every 4th pixel in both directions is enough to tell "empty" from
 + * "has content", and keeps the cost off the present path.
 + */
 +#define SWEET_FBSURF_IDS     12
-+#define SWEET_FBSURF_REPORTS 6
++#define SWEET_FBSURF_REPORTS 10
 +
 +static uint32_t sweet_fbsurf_reports;
 +
@@ -69,7 +73,7 @@ index 2899ef7..8bfadb6 100644
  /*
   * SWEET FBVIEW: a text screenshot of the composed frame.
   *
-@@ -1374,6 +1434,15 @@ AppleCLCD::present(const uint8_t *rec)
+@@ -1374,6 +1438,15 @@ AppleCLCD::present(const uint8_t *rec)
  		s->release();
  	}
  	sweet_fbview(dst, fWidth, fHeight, fRowBytes);
@@ -78,7 +82,7 @@ index 2899ef7..8bfadb6 100644
 +		uint32_t swapno = get32(rec, 0x50);
 +
 +		if (PE_parse_boot_argn("sweetfbsurf", &want, sizeof(want)) && want != 0 &&
-+		    (swapno <= 2 || (swapno != 0 && (swapno % 300u) == 0u))) {
++		    (swapno <= 2 || (swapno != 0 && (swapno % 10u) == 0u))) {
 +			sweet_fb_surface_report();
 +		}
 +	}
