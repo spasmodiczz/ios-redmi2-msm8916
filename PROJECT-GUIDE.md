@@ -17,14 +17,39 @@
 | **eMMC 上的 HFS+ 卷为 root** | ✅ 已通（2026-11-21） |
 | launchd 真实启动 + dyld 映射共享缓存 | ✅ 已发生 |
 | **用户态 4 KB 地址空间** | ✅ 已通（`PS=12`、`MP=12`） |
-| 执行到 `libcorecrypto` 的 AES 指令 | ✅ 已在 `0255` 里模拟（`sweetemu=3`），真机已执行 |
-| **launchd 引导任务 `mount-phase-1`** | ❌ **当前卡点**：`mount_hfs` 重复挂载 `/` → EBUSY/EROFS |
+| 执行到 `libcorecrypto` 的 AES 指令 | ✅ 已模拟（`0255`），FIPS POST 实测通过 |
+| launchd 引导任务 `mount-phase-1` | ✅ 已通（可写根 `--rd-emmc`，`/` 的 update 成功） |
+| launchd 引导任务 `fips`（`cc_fips_test`） | ✅ **FIPS POST result = true**（boot 15） |
+| 早期引导全部完成、LaunchDaemons 启动 | ✅ `Early boot complete`，boot 16 约 200 个服务 `exec` |
+| 合成器真的出帧（`SWEET SURF` 建面 + `FB: swap`） | ✅ boot 16 出帧 384，`display on`，无 panic |
+| **屏幕上到底显示什么** | ❓ **当前未知**：`0257` 的 `sweetfbview=N` 一次启动即可判定 |
 
-**当前根因（2026-11-27 21:20，boot 11 实测）**：内核在 `rd=emmcroot0` 阶段已把 HFS+ 根挂好且只读，
-launchd 的 `mount` 引导任务又去 `open(/dev/emmcroot0)` 并 `mount_hfs`，得到
-`GetMasterBlock: Error 16` → `mount_hfs: Read-only file system` → `mount: / failed with 1`，
-`mount-phase-1` 被判失败后 panic。与加密指令无关（boot 10 用垃圾结果、boot 11 用真模拟，失败点与
-返回码完全相同）。AES 的历史（SIGILL 证据链、A 方案失败、C 方案实施）见第十一节。
+**当前状态（2026-11-28 00:30，boot 16 实测，已纠正 boot 15 的两处误判）**：密码学墙已越过 ——
+FIPS POST 全项通过（含 `aes_gcm`，靠 `0255` 的 AES/SHA/PMULL 指令模拟 + 「写回异常上下文而非
+live 寄存器」的修复）。系统**已经完整引导**：`Early boot complete`，约 200 个服务被 `exec`
+（SpringBoard、backboardd、CommCenter、securityd、lsd、coreduetd…），`SWEET FB: display on`，
+合成器实际出帧 **384 帧**，`SWEET SURF` 建面 720×1280 与 720×320 两种。
+
+**boot 15 的两处误判（`0256` 去重后暴露）**：
+1. `IOServiceMatchingfailed … AppleM2ScalerCSCDriver` 不是 12 689 行死循环，而是**同一条消息被
+   `/dev/null` tee 重复捕获**；去重后只有 **3 条**，且 `IOAcceleratorES` 是**匹配到的**
+   （`-> IOAcceleratorES`），不是缺失。
+2. 「出帧停在第 16 帧」是假象：`present()` 里的日志闸门是硬编码 `sweet_fb_swaps_logged < 16`，
+   之后的出帧不再打印。**日志安静并不能证明合成器停了** —— 已由 `0257` 改成「前 8 帧 + 每 300 帧」。
+
+**尚未解决的，按证据强弱排序**：
+- 屏幕到底显示什么**未知**（无相机）。`0257` 的 `sweetfbview=N` 把合成帧降采样成 60×22 字符图
+  打进日志，一次启动即可判定「黑屏 / 苹果 logo / 转圈 / 花屏」。
+- `kAKSWrapKey`（选择子 10）未实现 → `kIOReturnUnsupported`，`securityd` 在 t=139–157、
+  t=270–298 两批各 32 次重试。其余选择子（0/7/14/17/26/102/103…）均返回 0。
+- 可写根在 HFS+ 上被反复标记不一致：`hfs_mark_inconsistent` 23 次、`BlockMarkFreeInternal`
+  试图释放未分配块 5 次（`--rd-emmc` 的已知代价）。
+- `/private/var` 只是 HFS+ 根上的目录，没有 Data Protection（`MKB_INIT: mount point
+  (/private/var/) does not support Data Protection`），系统据此走 `com.apple.datamigrator`
+  + `migrationpluginwrapper` 的数据迁移分支。
+- 崩溃循环（非致命）：`fairplayd.H2` 28 次、`bluetoothd` 26 次、`CommCenter` 6 次 `exec`。
+
+AES 的历史（SIGILL 证据链、A 方案失败、C 方案实施）见第十一节。
 
 ---
 
@@ -405,6 +430,107 @@ CI run `45987055545` **conclusion=success**（build 17 分钟），build.log 第
   `sha256h2` 消息走 d；字在寄存器内是小端，读写按字节拼装而非强制转换。
 - 验证：十个指令 × 4 组随机向量 = 40 例，与**按 FIPS-180 定义重写**的 Python oracle 全等；
   AES 侧 FIPS-197 C.1 仍通过。`[未验证]` 真机 FIPS POST 结果（等 CI `46010061025` 出包后 boot 13）。
+
+**关键坑：模拟结果必须写进异常上下文，不能写 live 寄存器（2026-11-27 22:10，boot 13）**
+
+- `[实测]` boot 13 里 `aes/sha` 全部进了 `/emul` 分支，但 FIPS 三个 KAT 同时失败
+  （`digest: sha1`、`digest: sha256`、`aes_ecb_encrypt cmp`）——即所有模拟都是**空操作**。
+- 根因：`arm_context_t = { arm_saved_state ss; arm_neon_saved_state ns; }`，异常入口把 `q0..q31`
+  存进 `context->ns`，返回时再从那里恢复；而 `sleh_synchronous` 只把 `&context->ss` 传进
+  `handle_uncategorized`。写 live 的 V 寄存器在返回时被覆盖。
+- 修法：`handle_uncategorized` 改收 `arm_context_t *`（内部保留 `state = &context->ss`，其余不动），
+  探针通过 `neon_state64(&context->ns)->v.q[]` 读写。**顺带不再需要任何 EL1 FP 访问**，
+  原来那套 `stp/ldp q0..q31` 全部删除。
+- 主机测试新增断言：mode 3 必须把结果写进保存的 NEON 区（守护这次的回归）。
+
+**boot 15 里程碑（2026-11-27 23:30，`runlog/2026-11-27-boot15-decoded.txt`）**：`[实测]`
+FIPS POST 全项 PASSED，`Returned from calling the FIPS_POST function: result = true`；
+`Early boot complete. Continuing system boot.`；482 次 `exec`（SpringBoard、backboardd、
+CommCenter、searchd、accountsd 等）。日志 1.32 MB / 363 次 flush / 456 s。
+新卡点：`backboardd` 反复 `IOServiceMatching failed for: AppleM2ScalerCSCDriver`（12 689 次）。
+后续工作从「CPU 指令模拟」转到「IOKit 显示栈补齐」，与加密无关。
+
+**boot 16 与两处纠正（2026-11-28 00:20，`runlog/2026-11-27-boot16-decoded.txt`）**：`[实测]`
+`0256` 的去重把日志从 976 KB 压到 143 KB（2173 行），于是看到真相：
+- `IOServiceMatchingfailed` 只有 **3 条**（不是 12 689）；`IOAcceleratorES` 是**找到了**的。
+- 系统真的引导完成：`Early boot complete`、约 200 个服务 `exec`、`SWEET FB: display on`、
+  `SWEET SURF` 建了 720×1280 与 720×320 两种面、`SWEET EMU` 16 个 opcode **全是 `/emul`**（无 `/skip`）。
+- 但「只出了 16 帧」是日志闸门 `sweet_fb_swaps_logged < 16` 造成的假象 → `0257` 改为前 8 + 每 300 帧。
+
+`0257`（帧缓冲文本视图）：`sweetfbview=N` 把即将呈现的那一帧降采样到 60×22 网格，每格取**最亮**
+像素（细笔画降采样后不丢），映射成明暗字符，每行一条 `SWEET FBVIEW|…|`。同签名帧跳过，
+所以 N 计的是「不同的屏」。主机测试覆盖默认关闭、上限、签名去重、行宽、黑白两端、短 stride 拒绝。
+
+**boot 17（2026-11-28 00:39，`runlog/2026-11-27-boot17-decoded.txt`，`sweetfbview=6`）**：`[实测]`
+`SWEET FBVIEW #1 720x320 stride 2880` 之后**再无第二次 dump**，22 行全为空格 —— 即整段 320 s 里
+**合成帧是纯黑且签名从未变化**。同时 `display on` 正常、`SWEET SURF` 建了 720×1280 与 720×320
+两套面、`FB: swap` 到 69 帧、无 `FBSDisplayMode` 报错。所以：
+- 显示模式被 iOS 接受，像素路径没有花屏/错色问题；
+- **没有任何人往呈现面上画东西**，不是格式或拷贝通道的错。
+
+**与参考手记的对照（关键）**：`ref/NOTES-sweet.md` 明确记着「backboardd 调
+`DMPerformMigrationIfNeeded`，并**把 SpringBoard 挂在 `checkInAndWaitForDataMigration` 里**直到
+迁移返回」。我们的日志签名完全吻合：`exec SpringBoard` 一次 → `AKS sel 0/7` → 此后再无任何
+SpringBoard 活动、也无崩溃。参考平台在迁移期间由 backboardd 画进度界面（1080×2400 双面，
+5 分钟 13 000+ swaps）；我们只有 69 swaps 且全黑，说明**进度界面也没画出来**。
+
+**离线读根镜像（`E:/ios-rootfs/iOSRoot.img`，只读挂载）**：`[实测]`
+缺 `/private/var/mobile/Library/Preferences/com.apple.migration.plist`、缺 `Preferences/ByHost`、
+缺 `com.apple.purplebuddy.plist`、缺 `/private/var/containers`；`/private/var/datamigrator` 存在但为空
+（无 `migrate` 哨兵）。即参考手记 v12/v14 里用来「跳过迁移与 Setup」的那批标记，本镜像一个都没有。
+
+**待判定的分叉（`0258`）**：`sweetfbsurf=1` 会打印每个活跃 IOSurface 的非黑像素数。
+- 全为 `lit 0` → 确实没人画，下一步要用户栈（采样器在本树无输出，需改 `printf`→`IOLog`）；
+- `id 2`（720×1280）有内容而 `id 3`（720×320，即 layer 0 呈现面）为空 → 是呈现选错了面。
+
+**boot 18 判定（2026-11-28 01:22，`sweetfbsurf=1`）—— 黑屏根因确认**：`[实测]`
+```
+id 1 720x320   lit 0 of 14400      panel buffer，空
+id 2 720x1280  lit 3739 of 57600   UI 画布，有内容（6.5%）
+id 3 720x320   lit 0 of 14400      layer 0 呈现面，空
+id 4 720x1280  lit 3740 of 57600   第二块画布，有内容
+id 5 720x320   lit 0 of 14400      空
+```
+同时 `FB: swap 6600` —— 合成器实际出了 **6600 帧**。所以「只有 69 帧、画面静止」是前 8 帧日志闸门
+造成的假象，backboardd 一直在正常合成与动画（6.5% 的覆盖率正好是黑底上的 logo + 进度条）。
+
+**根因：显示几何自相矛盾**（同一份 `build-shim.sh` 里硬编码的两个值互相冲突）：
+| 来源 | 值 | 由谁决定 |
+|---|---|---|
+| ADT `/arm-io/disp0` 的 `canvas-*` | 720×1280 | `mkadt.py --native` |
+| IOMFB 上报用户态的尺寸 | 720×320 | `sweetfb_native=1` → `fLogicalH = fHeight` |
+
+iOS 于是按 720×1280 渲染、再往 720×320 的呈现面**缩放**；缩放在 GPU 上，而 `IOAcceleratorES`
+是本项目的空桩（`0138`）—— 所以呈现面永远是空的，面板自然全黑。
+
+**修法（已改 `build-shim.sh`，不需要重编内核）**：新增 `SWEET_FB_NATIVE`（默认 1），
+一个变量同时决定 cmdline 的 `sweetfb_native=` 与 mkadt 的 `--native`，两者不会再漂移。
+取 `SWEET_FB_NATIVE=0` 时是参考移植原本的「舷窗」设计：iOS 认为屏幕是 1125×2436，
+面板取**中心** 720×320 窗口（`fOffX/fOffY`），全程 1:1 无缩放，CPU 直接拷贝。
+**boot 19 判定（2026-11-28 01:27）—— 面板首次出现 iOS 内容**：`[实测]`
+```
+id 1 720x320   lit 746 of 14400     ← 面板缓冲，第一次非空（5.2%）
+id 2 1125x2436 lit 11018 of 171738  ← UI 画布
+id 3 1125x2436 lit 11018 of 171738  ← layer 0 呈现面（现在是画布本身，1:1）
+FB: swap 4800 layer 0 surface 2 1125x2436 ... b 0,0 1125x2436
+```
+`SWEET FBVIEW` 截到了实际画面（居中窗口里的斜向白色图形 = 苹果 logo 的一部分）：
+```
+|                                   +%@@@     |
+|                                 -@@@@@@     |
+|                                %@@@@@@@     |
+|                               #@@@@@@@+     |
+|                              .@@@@@@@@      |
+|                 .#@@@@@@@@#:   .*%@@@@@@@@%=|
+```
+即：**几何自洽后链路全通** —— iOS 在 1125×2436 画布上绘制，backboardd 以 1:1 呈现，
+内核按 `fOffX/fOffY` 取中心 720×320 窗口，CPU 直接拷贝到面板，全程不经过 GPU。
+
+**当前可见范围**：1125×2436 的中央 720×320（物理落在面板 960~1279 行，即下方四分之一）。
+要看到完整画面有两条路：
+1. 让面板真正扫描 720×1280 并把 canvas 设成 720×1280（1:1 全屏，需显示驱动侧工作）；
+2. 在拷贝路径上做一次 CPU 缩放，把 1125×2436 压进 720×320（能看全貌，但底部一条、
+   非等比），或在 canvas 层面直接选一个与面板同比例的小尺寸。
 
 **设备操作纠正（2026-11-27，实测）**：`fastboot reboot recovery` 返回 OKAY 但不进 recovery；
 `fastboot oem reboot-recovery` 报 `unknown command`；`fastboot boot <img>` **可用但要求纯 ASCII 路径**

@@ -111,8 +111,17 @@ python3 ../tools/mkinit.py out/init.o out/init.macho
 # 注意 sweetlog 不在默认值里：0253 的日志线程会把 16 MiB 环写进 "system" 分区
 # 开头 32769 个扇区。默认关闭，任何一次普通启动（含阶段 2 的只读门）才不会写盘。
 # 需要持久日志时显式 PERSISTLOG=1，之后用 tools/sweet-log-pull.sh 取回。
+# sweetfb_native 与 mkadt 的 --native 必须同步：前者决定 IOMFB 上报给用户态的尺寸
+# (fLogicalW/H)，后者决定 ADT 里 /arm-io/disp0 的 canvas-*。两者不一致时 iOS 会按
+# canvas 渲染、再往较小的呈现面缩放，而缩放在 GPU 上（本项目是空桩）→ 呈现面永远空白。
+FB_NATIVE="${SWEET_FB_NATIVE:-1}"
+ADT_NATIVE=""
+if [ "$FB_NATIVE" = 1 ]; then
+	ADT_NATIVE="--native"
+fi
+
 CMDLINE="debug=0x14e serial=3 disable_kprintf_output=0 \
-sweetfb_native=1 sweetfb_noconsole=1 sweetfb_hz=30 sweetfb_stayon=1 sweethidtest=0 \
+sweetfb_native=$FB_NATIVE sweetfb_noconsole=1 sweetfb_hz=30 sweetfb_stayon=1 sweethidtest=0 \
 cpus=1 sweetcpufreq=0 sweetbattery=0 \
 unentitled_ios_sim_launch=1 launchd_unsecure_cache=1 wdt=-1 wdt_test=no_user_checkin ignition_level=1 \
 -v keepsyms=1 wt86047"
@@ -170,7 +179,7 @@ if [ -n "$PAYLOAD" ] && [ -f "$PAYLOAD" ]; then
 			echo "      ADT 将没有 /product 节点，MobileGestalt 拿不到机型/屏幕信息。" >&2
 			echo "      从 IPSW 提取 DeviceTree.d22ap.im4p 后放该路径，或设 SWEET_D22AP_ADT。" >&2
 		fi
-		python3 ../tools/mkadt.py out/wt86047.adt --native
+		python3 ../tools/mkadt.py out/wt86047.adt $ADT_NATIVE
 		python3 ../tools/mkpayload.py "$PAYLOAD" out/wt86047.adt out/payload.bin \
 			--cmdline "$CMDLINE" --ramdisk out/init.macho
 		RAMDISK="out/payload.bin"
