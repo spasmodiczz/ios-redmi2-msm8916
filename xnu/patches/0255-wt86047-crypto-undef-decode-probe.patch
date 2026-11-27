@@ -1,8 +1,8 @@
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
-index 4321dfe..8165754 100755
+index 4321dfe..8bc2950 100755
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
-@@ -1022,6 +1022,124 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
+@@ -1022,6 +1022,127 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
  }
  #endif /* SWEET */
  
@@ -20,6 +20,9 @@ index 4321dfe..8165754 100755
 + *	sweetemu=1  decode + print, still deliver the SIGILL
 + *	sweetemu=2  decode + print + step over the instruction; crypto results
 + *	            are then WRONG, use it only to enumerate opcodes
++ *
++ * The tunable name must NOT start with '-' : PE_parse_boot_argn treats any
++ * dash-prefixed argument as a boolean and stores 1, ignoring "=value".
 + */
 +enum sweet_crypto_op {
 +	SEO_NONE = 0,
@@ -68,7 +71,7 @@ index 4321dfe..8165754 100755
 +#define SWEET_CRYPTO_ENCODING_COUNT \
 +	(sizeof(sweet_crypto_encodings) / sizeof(sweet_crypto_encodings[0]))
 +
-+TUNABLE(uint32_t, sweet_emu_mode, "-sweetemu", 0);
++TUNABLE(uint32_t, sweet_emu_mode, "sweetemu", 0);
 +
 +static uint32_t sweet_emu_hits[SEO_COUNT];
 +static uint8_t  sweet_emu_printed[SEO_COUNT];
@@ -127,7 +130,7 @@ index 4321dfe..8165754 100755
  /*
   * Uncategorized exceptions are a catch-all for general execution errors.
   * ARM64_TODO: For now, we assume this is for undefined instruction exceptions.
-@@ -1036,6 +1154,13 @@ handle_uncategorized(arm_saved_state_t *state)
+@@ -1036,6 +1157,13 @@ handle_uncategorized(arm_saved_state_t *state)
  
  	COPYIN(get_saved_state_pc(state), (char *)&instr, sizeof(instr));
  
