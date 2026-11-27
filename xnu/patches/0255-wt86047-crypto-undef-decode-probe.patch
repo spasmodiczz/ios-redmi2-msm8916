@@ -1,8 +1,8 @@
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
-index 4321dfe..75730b0 100755
+index 4321dfe..3fe0d7c 100755
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
-@@ -1022,6 +1022,358 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
+@@ -1022,6 +1022,366 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
  }
  #endif /* SWEET */
  
@@ -249,11 +249,19 @@ index 4321dfe..75730b0 100755
 +		uint8_t a2 = s[4u * c + 2], a3 = s[4u * c + 3];
 +
 +		if (!inverse) {
-+			s[4u * c + 0] = (uint8_t)(sweet_aes_mul(a0, 2) ^ sweet_aes_mul(a1, 3) ^ a2 ^ a3);
-+			s[4u * c + 1] = (uint8_t)(a0 ^ sweet_aes_mul(a1, 2) ^ sweet_aes_mul(a2, 3) ^ a3);
-+			s[4u * c + 2] = (uint8_t)(a0 ^ a1 ^ sweet_aes_mul(a2, 2) ^ sweet_aes_mul(a3, 3));
-+			s[4u * c + 3] = (uint8_t)(sweet_aes_mul(a0, 3) ^ a1 ^ a2 ^ sweet_aes_mul(a3, 2));
++			/*
++			 * Forward MixColumns without multiplications: with
++			 * t = a0^a1^a2^a3, each output byte is a_i ^ t ^ xtime(a_i ^ a_{i+1}).
++			 * Four xtime calls per column instead of four GF multiply loops.
++			 */
++			uint8_t t = (uint8_t)(a0 ^ a1 ^ a2 ^ a3);
++
++			s[4u * c + 0] = (uint8_t)(a0 ^ t ^ sweet_aes_xtime((uint8_t)(a0 ^ a1)));
++			s[4u * c + 1] = (uint8_t)(a1 ^ t ^ sweet_aes_xtime((uint8_t)(a1 ^ a2)));
++			s[4u * c + 2] = (uint8_t)(a2 ^ t ^ sweet_aes_xtime((uint8_t)(a2 ^ a3)));
++			s[4u * c + 3] = (uint8_t)(a3 ^ t ^ sweet_aes_xtime((uint8_t)(a3 ^ a0)));
 +		} else {
++			/* Inverse path is not on the boot path yet: keep it obvious. */
 +			s[4u * c + 0] = (uint8_t)(sweet_aes_mul(a0, 14) ^ sweet_aes_mul(a1, 11) ^
 +			    sweet_aes_mul(a2, 13) ^ sweet_aes_mul(a3, 9));
 +			s[4u * c + 1] = (uint8_t)(sweet_aes_mul(a0, 9) ^ sweet_aes_mul(a1, 14) ^
@@ -361,7 +369,7 @@ index 4321dfe..75730b0 100755
  /*
   * Uncategorized exceptions are a catch-all for general execution errors.
   * ARM64_TODO: For now, we assume this is for undefined instruction exceptions.
-@@ -1036,6 +1388,13 @@ handle_uncategorized(arm_saved_state_t *state)
+@@ -1036,6 +1396,13 @@ handle_uncategorized(arm_saved_state_t *state)
  
  	COPYIN(get_saved_state_pc(state), (char *)&instr, sizeof(instr));
  
