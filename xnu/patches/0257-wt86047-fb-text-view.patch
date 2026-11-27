@@ -1,0 +1,144 @@
+diff --git a/iokit/Kernel/arm/SweetFramebuffer.cpp b/iokit/Kernel/arm/SweetFramebuffer.cpp
+index 1b4319f..2899ef7 100644
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -614,6 +614,110 @@ get32(const uint8_t *p, uint32_t off)
+ }
+ 
+ static uint32_t sweet_fb_swaps_logged;
++
++/*
++ * SWEET FBVIEW: a text screenshot of the composed frame.
++ *
++ * The panel is this port's only output and the boot log is the only channel
++ * back, so a headless bring-up needs a way to see what the compositor
++ * actually produced. Every cell of a COLS x ROWS grid keeps the brightest
++ * pixel of its block, mapped onto a darkness ramp; ROWS log lines then show
++ * the shape of the frame.
++ *
++ *	sweetfbview=N	dump at most N frames that differ from the last one
++ *			(0, the default, keeps the probe off)
++ *
++ * The point is not fidelity: it answers "is the screen black, is it the Apple
++ * logo, is it a spinner" from a serial log.
++ */
++#define SWEET_FBVIEW_COLS 60
++#define SWEET_FBVIEW_ROWS 22
++
++static uint32_t sweet_fbview_max;
++static uint32_t sweet_fbview_dumps;
++static uint32_t sweet_fbview_sig;
++static bool     sweet_fbview_read;
++
++static const char sweet_fbview_ramp[] = " .:-=+*#%@";
++
++static void
++sweet_fbview(const uint8_t *frame, uint32_t width, uint32_t height, uint32_t stride)
++{
++	uint8_t cells[SWEET_FBVIEW_ROWS][SWEET_FBVIEW_COLS];
++	char row[SWEET_FBVIEW_COLS + 1];
++	uint32_t sig = 2166136261u;
++	uint32_t cx, cy;
++
++	if (!sweet_fbview_read) {
++		int want = 0;
++
++		sweet_fbview_read = true;
++		if (PE_parse_boot_argn("sweetfbview", &want, sizeof(want)) && want > 0) {
++			sweet_fbview_max = (uint32_t)want;
++		}
++	}
++	if (sweet_fbview_max == 0 || frame == NULL || width == 0 || height == 0 ||
++	    stride < width * 4 || sweet_fbview_dumps >= sweet_fbview_max) {
++		return;
++	}
++
++	for (cy = 0; cy < SWEET_FBVIEW_ROWS; cy++) {
++		uint32_t y0 = (uint32_t)(((uint64_t)height * cy) / SWEET_FBVIEW_ROWS);
++		uint32_t y1 = (uint32_t)(((uint64_t)height * (cy + 1)) / SWEET_FBVIEW_ROWS);
++		uint32_t y;
++
++		if (y1 <= y0) {
++			y1 = y0 + 1;
++		}
++		if (y1 > height) {
++			y1 = height;
++		}
++		for (cx = 0; cx < SWEET_FBVIEW_COLS; cx++) {
++			uint32_t x0 = (uint32_t)(((uint64_t)width * cx) / SWEET_FBVIEW_COLS);
++			uint32_t x1 = (uint32_t)(((uint64_t)width * (cx + 1)) / SWEET_FBVIEW_COLS);
++			uint32_t peak = 0;
++			uint32_t x;
++
++			if (x1 <= x0) {
++				x1 = x0 + 1;
++			}
++			if (x1 > width) {
++				x1 = width;
++			}
++			/* Brightest pixel in the block: thin glyphs survive downscaling. */
++			for (y = y0; y < y1; y++) {
++				const uint8_t *line = frame + (uint64_t)y * stride;
++
++				for (x = x0; x < x1; x++) {
++					const uint8_t *px = line + (uint64_t)x * 4;
++					uint32_t luma = (77u * px[2] + 151u * px[1] + 28u * px[0]) >> 8;
++
++					if (luma > peak) {
++						peak = luma;
++					}
++				}
++			}
++			cells[cy][cx] = (uint8_t)((peak * 9u) / 255u);
++			sig = (sig ^ cells[cy][cx]) * 16777619u;
++		}
++	}
++
++	if (sweet_fbview_dumps > 0 && sig == sweet_fbview_sig) {
++		return;
++	}
++	sweet_fbview_sig = sig;
++	sweet_fbview_dumps++;
++	IOLog("SWEET FBVIEW #%u %ux%u stride %u sig %08x\n",
++	    sweet_fbview_dumps, width, height, stride, sig);
++	for (cy = 0; cy < SWEET_FBVIEW_ROWS; cy++) {
++		for (cx = 0; cx < SWEET_FBVIEW_COLS; cx++) {
++			row[cx] = sweet_fbview_ramp[cells[cy][cx]];
++		}
++		row[SWEET_FBVIEW_COLS] = '\0';
++		IOLog("SWEET FBVIEW|%s|\n", row);
++	}
++}
++
+ static uint64_t sweet_fb_swap_count;
+ 
+ /* Copy each enabled layer's surface into the panel memory (no scaling). */
+@@ -1198,10 +1302,18 @@ AppleCLCD::present(const uint8_t *rec)
+ 			continue;
+ 		}
+ 		SweetSurface *s = sweet_surface_copy(id);
+-		if (sweet_fb_swaps_logged < 16) {
++		/*
++		 * A fixed cap of 16 hid whether the compositor was still
++		 * presenting: boot 16 logged 16 frames and then went silent.
++		 * Log the first few and then every 300th, so a long run still
++		 * shows it alive.
++		 */
++		uint32_t swapno = get32(rec, 0x50);
++		if (sweet_fb_swaps_logged < 8 ||
++		    (swapno != 0 && (swapno % 300u) == 0u)) {
+ 			sweet_fb_swaps_logged++;
+ 			IOLog("SWEET FB: swap %u layer %u surface %u %ux%u fmt 0x%x bpr %u a %d,%d %ux%u b %d,%d %dx%d\n",
+-			    get32(rec, 0x50), layer, id, s ? s->width : 0, s ? s->height : 0,
++			    swapno, layer, id, s ? s->width : 0, s ? s->height : 0,
+ 			    s ? s->pixelFormat : 0, s ? s->bytesPerRow : 0, sx, sy, get32(a, 8),
+ 			    get32(a, 12), dx, dy, w, h);
+ 		}
+@@ -1261,6 +1373,7 @@ AppleCLCD::present(const uint8_t *rec)
+ 		}
+ 		s->release();
+ 	}
++	sweet_fbview(dst, fWidth, fHeight, fRowBytes);
+ 	if (fFlip[0] != NULL) {
+ 		flipBack();
+ 	} else {
