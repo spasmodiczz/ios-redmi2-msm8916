@@ -645,6 +645,30 @@ backboardd 拿不到容器 → 不再初始化显示**。这与「进不到 iOS 
 3. 回写后**先抑制迁移**（参考手记 v12 做法：`LastSystemVersion` + `containers` 目录齐备），
    再启动，避免再次被同一个迁移写坏。
 
+**第 1 步结果：设备侧卷确实已损坏（2026-11-28 05:15，`[实测]`）**
+导出 userdata 整块 14,253 MiB（分块 dd + 尺寸校验，14 分钟）后，在 PC 上 `fsck.hfsplus -n`：
+```
+Overlapped extent allocation (id = 339883, /private/var/mobile/Library/Spotlight/...)
+Overlapped extent allocation (id = 339917, /private/var/db/systemstats/current_build)
+… 共二十余处，全部位于 /private/var 下
+** Volume bitmap needs minor repair for under-allocation
+** Volume header needs minor repair
+** The volume iOSRoot was found corrupt and needs to be repaired.
+```
+卷签名 `HX` = **HFSX（区分大小写、无日志）**。基线镜像 `E:/ios-rootfs/iOSRoot.img` 同时做同样的
+`fsck -n` 为 `appears to be OK` —— 说明损坏是设备侧写入造成的，源镜像干净。
+
+**损坏机制（本次真正的教训）**：卷**无日志**，而数据迁移在 `/private/var` 下持续写入近 79 分钟，
+其间多次强制断电 → 区段重叠分配 + 位图下分配 → 目录结构与位图不一致。
+containermanagerd 读到这些损坏项后崩溃循环，backboardd 因此拿不到容器、不初始化显示。
+**所以「看不到 iOS 界面」的直接原因是卷损坏，不是显示驱动。**
+
+**已执行的修复（第 2/3 步）**：在基线副本上补 `containers/{Bundle,Data/System,Shared/SystemGroup,Temp}`
+（root:wheel 0755）、`Preferences/ByHost`、`com.apple.migration.plist`（`LastSystemVersion=20H392`，
+501:501 0600），复查 `fsck -n` 通过，转 sparse：
+`D:/ios-rootfs-work/fixed-1128-0454.simg`，11,583 MiB，sha256 `176390b1b9c68d10166850f820b03027…`。
+用 `fastboot flash userdata` 回写（基线镜像保留，可随时重建）。
+
 **设备操作纠正（2026-11-27，实测）**：`fastboot reboot recovery` 返回 OKAY 但不进 recovery；
 `fastboot oem reboot-recovery` 报 `unknown command`；`fastboot boot <img>` **可用但要求纯 ASCII 路径**
 （中文文件名会导致失败），把 TWRP 复制成 `tmp/twrp.img` 即可；`fastboot boot` 传输中断后
