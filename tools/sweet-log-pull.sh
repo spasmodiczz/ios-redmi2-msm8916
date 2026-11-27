@@ -22,12 +22,44 @@ case "$dev" in
     ring=$(python3 "$here/sweet-log.py" --ring-size "$out.hdr")
     blocks=$((1 + ring / 512))
     echo "Found SYSTEM ($dev): ring $ring bytes -> $blocks blocks" >&2
-    adb exec-out "dd if=$dev bs=512 count=$blocks 2>/dev/null" > "$out.bin"
-    size=$(python3 -c 'import os,sys; print(os.path.getsize(sys.argv[1]))' "$out.bin")
+    # One adb dd of the whole ring comes back short (seen: 9.5 MB of 16.7 MB),
+    # which silently truncates the newest boot's early output and has produced
+    # several wrong "the driver never ran" conclusions. Read it in 2 MiB chunks
+    # and insist on the exact byte count; a short chunk is retried.
     want=$((blocks * 512))
-    echo "$dev: read $blocks blocks ($size bytes)" >&2
+    fsize() { python3 -c 'import os,sys; print(os.path.getsize(sys.argv[1]))' "$1"; }
+    ftrunc() { python3 -c 'import os,sys; os.truncate(sys.argv[1], int(sys.argv[2]))' "$1" "$2"; }
+    : > "$out.bin"
+    off=0
+    chunk=4096                     # 2 MiB per dd
+    while [ "$off" -lt "$blocks" ]; do
+        n=$((blocks - off))
+        [ "$n" -gt "$chunk" ] && n=$chunk
+        need=$((n * 512))
+        tries=0
+        while :; do
+            adb exec-out "dd if=$dev bs=512 skip=$off count=$n 2>/dev/null" >> "$out.bin"
+            got=$(fsize "$out.bin")
+            [ "$got" -ge $((want)) ] && break
+            have=$((got - off * 512))
+            if [ "$have" -ge "$need" ]; then
+                break
+            fi
+            ftrunc "$out.bin" $((off * 512))
+            tries=$((tries + 1))
+            if [ "$tries" -ge 4 ]; then
+                echo "chunk at $off blocks failed after $tries tries ($have/$need bytes)" >&2
+                rm -f "$out.hdr"
+                exit 1
+            fi
+            sleep 1
+        done
+        off=$((off + n))
+    done
+    size=$(fsize "$out.bin")
+    echo "$dev: read $blocks blocks in chunks ($size bytes)" >&2
     rm -f "$out.hdr"
-    [ "$size" -eq "$want" ] || { echo "short SYSTEM log read ($size != $want)" >&2; exit 1; }
+    [ "$size" -eq "$want" ] || { ftrunc "$out.bin" "$want"; echo "trimmed to $want bytes" >&2; }
     ;;
 /dev/block/bootdevice/by-name/userdata|/dev/block/by-name/userdata)
     bytes=$(adb shell blockdev --getsize64 "$dev" | tr -d '\r')

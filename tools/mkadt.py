@@ -34,19 +34,32 @@ FB_W, FB_H, FB_STRIDE = 720, 320, 720 * 3
 
 
 def apply_panel_override():
-    """SWEET_FB_PANEL=WxH: publish the whole panel instead of a 320-row window."""
+    """SWEET_FB_PANEL=WxH[@ROW]: choose the window the kernel is told about.
+
+    Plain WxH publishes a window at the top of the panel. The @ROW form puts the
+    same size at an arbitrary row, which is how the 320-row window that the
+    driver handles reliably can be moved to the middle of a 1280-row screen
+    instead of its bottom quarter.
+    """
     global FB, FB_SIZE, FB_W, FB_H, FB_STRIDE
     want = os.environ.get("SWEET_FB_PANEL", "").strip().lower()
     if not want:
         return
+    row = 0
+    if "@" in want:
+        want, _, row_s = want.partition("@")
+        try:
+            row = int(row_s)
+        except ValueError:
+            raise SystemExit(f"SWEET_FB_PANEL: bad row in {row_s!r}")
     try:
         w, h = (int(v) for v in want.split("x"))
     except ValueError:
-        raise SystemExit(f"SWEET_FB_PANEL: expected WxH, got {want!r}")
-    if w <= 0 or h <= 0:
-        raise SystemExit(f"SWEET_FB_PANEL: bad geometry {want!r}")
+        raise SystemExit(f"SWEET_FB_PANEL: expected WxH[@ROW], got {want!r}")
+    if w <= 0 or h <= 0 or row < 0:
+        raise SystemExit(f"SWEET_FB_PANEL: bad geometry {want!r}@{row}")
     FB_W, FB_H, FB_STRIDE = w, h, w * 3
-    FB, FB_SIZE = FB_BASE, w * h * 3
+    FB, FB_SIZE = FB_BASE + row * FB_STRIDE, w * h * 3
 TIMEBASE = 19200000
 VTIMER_INTID = 20
 # QEMU virt (-M virt,gic-version=2 -cpu cortex-a53): GICD/GICC and the generic timer's CNTFRQ
