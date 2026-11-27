@@ -1,8 +1,8 @@
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
-index 4321dfe..8bc2950 100755
+index 4321dfe..75730b0 100755
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
-@@ -1022,6 +1022,127 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
+@@ -1022,6 +1022,358 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
  }
  #endif /* SWEET */
  
@@ -20,6 +20,8 @@ index 4321dfe..8bc2950 100755
 + *	sweetemu=1  decode + print, still deliver the SIGILL
 + *	sweetemu=2  decode + print + step over the instruction; crypto results
 + *	            are then WRONG, use it only to enumerate opcodes
++ *	sweetemu=3  decode + print + EMULATE aese/aesd/aesmc/aesimc for real;
++ *	            every other opcode is still stepped over (and reported)
 + *
 + * The tunable name must NOT start with '-' : PE_parse_boot_argn treats any
 + * dash-prefixed argument as a boolean and stores 1, ignoring "=value".
@@ -90,11 +92,226 @@ index 4321dfe..8bc2950 100755
 +	return NULL;
 +}
 +
++/*
++ * --- AES round instructions ------------------------------------------------
++ *
++ * aese/aesd/aesmc/aesimc are the only instructions the boot path has needed so
++ * far (boot 10: three aese + three aesmc at image +0x900/+0x904). The state is
++ * column major: vector byte i is state row (i & 3), column (i >> 2), exactly
++ * how the architecture numbers it. Everything below is plain C on a 16-byte
++ * array; the vector registers are only touched by sweet_vsave/vrestore.
++ */
++
++struct sweet_vregs {
++	uint64_t q[32][2];
++} __attribute__((aligned(16)));
++
++#if defined(__aarch64__)
++static void
++sweet_vsave(struct sweet_vregs *v)
++{
++	__asm__ __volatile__(
++	    "stp q0,  q1,  [%0, #0]\n\t"
++	    "stp q2,  q3,  [%0, #32]\n\t"
++	    "stp q4,  q5,  [%0, #64]\n\t"
++	    "stp q6,  q7,  [%0, #96]\n\t"
++	    "stp q8,  q9,  [%0, #128]\n\t"
++	    "stp q10, q11, [%0, #160]\n\t"
++	    "stp q12, q13, [%0, #192]\n\t"
++	    "stp q14, q15, [%0, #224]\n\t"
++	    "stp q16, q17, [%0, #256]\n\t"
++	    "stp q18, q19, [%0, #288]\n\t"
++	    "stp q20, q21, [%0, #320]\n\t"
++	    "stp q22, q23, [%0, #352]\n\t"
++	    "stp q24, q25, [%0, #384]\n\t"
++	    "stp q26, q27, [%0, #416]\n\t"
++	    "stp q28, q29, [%0, #448]\n\t"
++	    "stp q30, q31, [%0, #480]\n\t"
++	    : : "r"(v) : "memory");
++}
++
++static void
++sweet_vrestore(const struct sweet_vregs *v)
++{
++	__asm__ __volatile__(
++	    "ldp q0,  q1,  [%0, #0]\n\t"
++	    "ldp q2,  q3,  [%0, #32]\n\t"
++	    "ldp q4,  q5,  [%0, #64]\n\t"
++	    "ldp q6,  q7,  [%0, #96]\n\t"
++	    "ldp q8,  q9,  [%0, #128]\n\t"
++	    "ldp q10, q11, [%0, #160]\n\t"
++	    "ldp q12, q13, [%0, #192]\n\t"
++	    "ldp q14, q15, [%0, #224]\n\t"
++	    "ldp q16, q17, [%0, #256]\n\t"
++	    "ldp q18, q19, [%0, #288]\n\t"
++	    "ldp q20, q21, [%0, #320]\n\t"
++	    "ldp q22, q23, [%0, #352]\n\t"
++	    "ldp q24, q25, [%0, #384]\n\t"
++	    "ldp q26, q27, [%0, #416]\n\t"
++	    "ldp q28, q29, [%0, #448]\n\t"
++	    "ldp q30, q31, [%0, #480]\n\t"
++	    : : "r"(v) : "memory");
++}
++#else /* host test build: no vector registers */
++static void sweet_vsave(struct sweet_vregs *v) { (void)v; }
++static void sweet_vrestore(const struct sweet_vregs *v) { (void)v; }
++#endif
++
++static uint8_t sweet_aes_sbox[256];
++static uint8_t sweet_aes_inv_sbox[256];
++static uint8_t sweet_aes_tables_ready;
++
++static uint8_t
++sweet_aes_rotl8(uint8_t x, unsigned n)
++{
++	return (uint8_t)((uint8_t)(x << n) | (uint8_t)(x >> (8 - n)));
++}
++
++static uint8_t
++sweet_aes_xtime(uint8_t x)
++{
++	return (uint8_t)((uint8_t)(x << 1) ^ (uint8_t)((x & 0x80u) ? 0x1bu : 0x00u));
++}
++
++/* GF(2^8) multiply, reduction polynomial x^8 + x^4 + x^3 + x + 1 (0x11b) */
++static uint8_t
++sweet_aes_mul(uint8_t a, uint8_t b)
++{
++	uint8_t r = 0;
++
++	while (b != 0) {
++		if (b & 1u) {
++			r ^= a;
++		}
++		a = sweet_aes_xtime(a);
++		b = (uint8_t)(b >> 1);
++	}
++	return r;
++}
++
++/*
++ * The S-box is derived instead of tabulated: 256 bytes of literals are one
++ * transcription mistake away from a very confusing bug, and this runs once.
++ */
++static void
++sweet_aes_init_tables(void)
++{
++	unsigned i, y;
++
++	if (sweet_aes_tables_ready) {
++		return;
++	}
++	for (i = 0; i < 256; i++) {
++		uint8_t inv = 0;
++
++		if (i != 0) {
++			for (y = 1; y < 256; y++) {
++				if (sweet_aes_mul((uint8_t)i, (uint8_t)y) == 1u) {
++					inv = (uint8_t)y;
++					break;
++				}
++			}
++		}
++		sweet_aes_sbox[i] = (uint8_t)(inv ^ sweet_aes_rotl8(inv, 1) ^
++		    sweet_aes_rotl8(inv, 2) ^ sweet_aes_rotl8(inv, 3) ^
++		    sweet_aes_rotl8(inv, 4) ^ 0x63u);
++	}
++	for (i = 0; i < 256; i++) {
++		sweet_aes_inv_sbox[sweet_aes_sbox[i]] = (uint8_t)i;
++	}
++	sweet_aes_tables_ready = 1;
++}
++
++static void
++sweet_aes_shift_rows(uint8_t *s, boolean_t inverse)
++{
++	uint8_t t[16];
++	unsigned r, c;
++
++	for (r = 0; r < 16; r++) {
++		t[r] = s[r];
++	}
++	for (r = 0; r < 4; r++) {
++		for (c = 0; c < 4; c++) {
++			unsigned src = inverse ? ((c + 4u - r) & 3u) : ((c + r) & 3u);
++			s[r + 4u * c] = t[r + 4u * src];
++		}
++	}
++}
++
++static void
++sweet_aes_mix_columns(uint8_t *s, boolean_t inverse)
++{
++	unsigned c;
++
++	for (c = 0; c < 4; c++) {
++		uint8_t a0 = s[4u * c + 0], a1 = s[4u * c + 1];
++		uint8_t a2 = s[4u * c + 2], a3 = s[4u * c + 3];
++
++		if (!inverse) {
++			s[4u * c + 0] = (uint8_t)(sweet_aes_mul(a0, 2) ^ sweet_aes_mul(a1, 3) ^ a2 ^ a3);
++			s[4u * c + 1] = (uint8_t)(a0 ^ sweet_aes_mul(a1, 2) ^ sweet_aes_mul(a2, 3) ^ a3);
++			s[4u * c + 2] = (uint8_t)(a0 ^ a1 ^ sweet_aes_mul(a2, 2) ^ sweet_aes_mul(a3, 3));
++			s[4u * c + 3] = (uint8_t)(sweet_aes_mul(a0, 3) ^ a1 ^ a2 ^ sweet_aes_mul(a3, 2));
++		} else {
++			s[4u * c + 0] = (uint8_t)(sweet_aes_mul(a0, 14) ^ sweet_aes_mul(a1, 11) ^
++			    sweet_aes_mul(a2, 13) ^ sweet_aes_mul(a3, 9));
++			s[4u * c + 1] = (uint8_t)(sweet_aes_mul(a0, 9) ^ sweet_aes_mul(a1, 14) ^
++			    sweet_aes_mul(a2, 11) ^ sweet_aes_mul(a3, 13));
++			s[4u * c + 2] = (uint8_t)(sweet_aes_mul(a0, 13) ^ sweet_aes_mul(a1, 9) ^
++			    sweet_aes_mul(a2, 14) ^ sweet_aes_mul(a3, 11));
++			s[4u * c + 3] = (uint8_t)(sweet_aes_mul(a0, 11) ^ sweet_aes_mul(a1, 13) ^
++			    sweet_aes_mul(a2, 9) ^ sweet_aes_mul(a3, 14));
++		}
++	}
++}
++
++/* vd/vn are separate registers: for aesmc/aesimc the result of Vn goes to Vd */
++static void
++sweet_aes_apply(uint8_t op, uint8_t *vd, const uint8_t *vn)
++{
++	unsigned i;
++
++	sweet_aes_init_tables();
++	switch (op) {
++	case SEO_AESE:
++		for (i = 0; i < 16; i++) {
++			vd[i] = (uint8_t)(vd[i] ^ vn[i]);
++		}
++		for (i = 0; i < 16; i++) {
++			vd[i] = sweet_aes_sbox[vd[i]];
++		}
++		sweet_aes_shift_rows(vd, FALSE);
++		break;
++	case SEO_AESD:
++		for (i = 0; i < 16; i++) {
++			vd[i] = (uint8_t)(vd[i] ^ vn[i]);
++		}
++		for (i = 0; i < 16; i++) {
++			vd[i] = sweet_aes_inv_sbox[vd[i]];
++		}
++		sweet_aes_shift_rows(vd, TRUE);
++		break;
++	case SEO_AESMC:
++	case SEO_AESIMC:
++		if (vd != vn) {
++			for (i = 0; i < 16; i++) {
++				vd[i] = vn[i];
++			}
++		}
++		sweet_aes_mix_columns(vd, op == SEO_AESIMC);
++		break;
++	default:
++		break;
++	}
++}
++
 +/* Returns TRUE when this exception has already been dealt with. */
 +boolean_t
 +sweet_crypto_emu_probe(arm_saved_state_t *state, uint32_t instr)
 +{
 +	const struct sweet_crypto_encoding *enc;
++	boolean_t emulate;
 +
 +	if (sweet_emu_mode == 0) {
 +		return FALSE;
@@ -105,11 +322,15 @@ index 4321dfe..8bc2950 100755
 +		return FALSE;
 +	}
 +
++	/* SEO_AESE .. SEO_AESIMC are the four AES forms we can emulate for real */
++	emulate = (sweet_emu_mode >= 3) && (enc->op <= SEO_AESIMC);
++
 +	sweet_emu_hits[enc->op]++;
 +	if (sweet_emu_printed[enc->op] < 3) {
 +		sweet_emu_printed[enc->op]++;
-+		printf("SWEET EMU %s pc=%p vd=%u vn=%u vm=%d hits=%u mode=%u\n",
++		printf("SWEET EMU %s/%s pc=%p vd=%u vn=%u vm=%d hits=%u mode=%u\n",
 +		    enc->name,
++		    emulate ? "emul" : "skip",
 +		    (void *)get_saved_state_pc(state),
 +		    (unsigned)(instr & 0x1fu),
 +		    (unsigned)((instr >> 5) & 0x1fu),
@@ -122,6 +343,16 @@ index 4321dfe..8bc2950 100755
 +		return FALSE;
 +	}
 +
++	if (emulate) {
++		struct sweet_vregs vr;
++		unsigned vd = instr & 0x1fu;
++		unsigned vn = (instr >> 5) & 0x1fu;
++
++		sweet_vsave(&vr);
++		sweet_aes_apply(enc->op, (uint8_t *)&vr.q[vd], (const uint8_t *)&vr.q[vn]);
++		sweet_vrestore(&vr);
++	}
++
 +	add_saved_state_pc(state, 4u);
 +	return TRUE;
 +}
@@ -130,7 +361,7 @@ index 4321dfe..8bc2950 100755
  /*
   * Uncategorized exceptions are a catch-all for general execution errors.
   * ARM64_TODO: For now, we assume this is for undefined instruction exceptions.
-@@ -1036,6 +1157,13 @@ handle_uncategorized(arm_saved_state_t *state)
+@@ -1036,6 +1388,13 @@ handle_uncategorized(arm_saved_state_t *state)
  
  	COPYIN(get_saved_state_pc(state), (char *)&instr, sizeof(instr));
  
