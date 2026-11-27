@@ -1,0 +1,89 @@
+diff --git a/bsd/dev/mem.c b/bsd/dev/mem.c
+index 291a546..eabc69e 100755
+--- a/bsd/dev/mem.c
++++ b/bsd/dev/mem.c
+@@ -191,6 +191,68 @@ sweet_null_tee(char *name, size_t len)
+ }
+ #endif
+ 
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++/*
++ * SWEET (WT86047): the /dev/null tee above turns a daemon's retry loop into
++ * thousands of identical console lines -- boot 15 had 12 689 copies of
++ * "IOServiceMatchingfailed for: AppleM2ScalerCSCDriver", 83% of the log, and
++ * they buried everything else. Keep a small hash table so each distinct line
++ * is printed a few times and then replaced by one marker; a single boot still
++ * shows every distinct message. sweetdedupe=0 turns it off.
++ */
++#define SWEET_NULL_SLOTS 64
++#define SWEET_NULL_CAP   3
++
++static int      sweet_null_dedupe = 1;
++static int      sweet_null_dedupe_parsed;
++static uint32_t sweet_null_hashes[SWEET_NULL_SLOTS];
++static uint8_t  sweet_null_counts[SWEET_NULL_SLOTS];
++static uint32_t sweet_null_next;
++
++/* 0 = drop, 1 = print the text, 2 = print the "repeats dropped" marker */
++static int
++sweet_null_emit(const char *buf, size_t n)
++{
++	uint32_t h = 2166136261u;
++	uint32_t i;
++	int slot = -1;
++
++	if (!sweet_null_dedupe_parsed) {
++		int on = 1;
++		PE_parse_boot_argn("sweetdedupe", &on, sizeof(on));
++		sweet_null_dedupe = on;
++		sweet_null_dedupe_parsed = 1;
++	}
++	if (!sweet_null_dedupe) {
++		return 1;
++	}
++
++	for (i = 0; i < n; i++) {
++		h ^= (uint8_t)buf[i];
++		h *= 16777619u;
++	}
++	for (i = 0; i < SWEET_NULL_SLOTS; i++) {
++		if (sweet_null_counts[i] != 0 && sweet_null_hashes[i] == h) {
++			slot = (int)i;
++			break;
++		}
++	}
++	if (slot >= 0) {
++		if (sweet_null_counts[slot] < 255) {
++			sweet_null_counts[slot]++;
++		}
++		if (sweet_null_counts[slot] <= SWEET_NULL_CAP) {
++			return 1;
++		}
++		return (sweet_null_counts[slot] == SWEET_NULL_CAP + 1) ? 2 : 0;
++	}
++	slot = (int)(sweet_null_next++ & (SWEET_NULL_SLOTS - 1));
++	sweet_null_hashes[slot] = h;
++	sweet_null_counts[slot] = 1;
++	return 1;
++}
++#endif /* ARM64_BOARD_CONFIG_SWEET */
++
+ int
+ mmrw(dev_t dev, struct uio *uio, enum uio_rw rw)
+ {
+@@ -264,8 +326,13 @@ mmrw(dev_t dev, struct uio *uio, enum uio_rw rw)
+ 					if (error) {
+ 						break;
+ 					}
+-					printf("|%s| %.*s%s", name, (int)c, buf,
+-					    (c > 0 && buf[c - 1] == '\n') ? "" : "\n");
++					int emit = sweet_null_emit(buf, (size_t)c);
++					if (emit == 1) {
++						printf("|%s| %.*s%s", name, (int)c, buf,
++						    (c > 0 && buf[c - 1] == '\n') ? "" : "\n");
++					} else if (emit == 2) {
++						printf("|%s| [repeats of the previous line dropped]\n", name);
++					}
+ 					continue;
+ 				}
+ 			}
