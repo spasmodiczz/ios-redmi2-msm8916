@@ -19,6 +19,7 @@
 # 环境变量：
 #   PROBE=1        出帧缓冲探针镜像
 #   PERSISTLOG=1   加 sweetlog=1（0253 的 16 MiB 环写进 system 分区开头 32769 扇区）
+#   SWEET_CMDLINE_EXTRA="a=1 b=2"  追加到 cmdline 末尾（如 sweetemu=2，0255 的探针档位）
 #   SWEET_D22AP_ADT=<path>  iPhone X 设备树，供 mkadt.py 生成 /product 节点
 set -euo pipefail
 
@@ -146,6 +147,12 @@ case "$RD_MODE" in
 	--rd-emmc-ro-log) CMDLINE="$CMDLINE rd=emmcroot0 sweetlog=1" ;;
 	*)                CMDLINE="$CMDLINE rd=md0" ;;
 esac
+
+# 额外内核参数（0255 的 sweetemu=1/2 等一次性探针），必须放在最后，不覆盖上面的档位
+if [ -n "${SWEET_CMDLINE_EXTRA:-}" ]; then
+	CMDLINE="$CMDLINE $SWEET_CMDLINE_EXTRA"
+	echo "SWEET_CMDLINE_EXTRA：追加 $SWEET_CMDLINE_EXTRA"
+fi
 
 # ---------------------------------------------------------------- payload
 RAMDISK="out/ramdisk.bin"

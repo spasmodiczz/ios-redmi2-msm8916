@@ -1,6 +1,8 @@
 # ios-port —— 红米2 (wt86047 / MSM8916) 移植 iOS 工作区
 
-主方案：**[PLAN-msm8916-v3.md](PLAN-msm8916-v3.md)**
+> 本文件是 2026-11-21 的旧入口，部分红线与补丁说明已过期。行为规范见 [AGENTS.md](AGENTS.md)，当前状态、命令与踩坑见 [PROJECT-GUIDE.md](PROJECT-GUIDE.md)。
+
+主方案（历史归档）：**[docs/archive/PLAN-msm8916-v3.md](docs/archive/PLAN-msm8916-v3.md)**
 硬件实测：**[board/hw-facts.md](board/hw-facts.md)**
 
 ## 一句话现状
@@ -60,9 +62,9 @@ build/           编译产物（build-shim.sh 生成）
 | `scripts/` | 打包、校验、dry-run 等工具 |
 | `board/` | 板级头文件、DTB、硬件事实记录 |
 | `patches-8916/` | 239 个补丁的**导入副本**（原始来源） |
-| `STATE.md` | 逐轮实测记录（排障时最先读这个） |
-| `HANDOFF-阶段2.md` | 阶段交接报告 |
-| `PLAN-msm8916-v3.md` | 总体计划 |
+| `docs/archive/STATE.md` | 逐轮实测记录（已归档，仅作历史查证） |
+| `docs/archive/HANDOFF-阶段2.md` | 阶段交接报告（已归档） |
+| `docs/archive/PLAN-msm8916-v3.md` | 总体计划（已归档） |
 | `ios-santoni.rev` | 固定 XNU 仓库的 remote / branch / commit |
 
 ### 不入库（可由命令重建，或体积过大）

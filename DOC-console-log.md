@@ -2,7 +2,7 @@
 
 > 面向"接手这个项目的人或模型"。只讲怎么用、怎么判读、哪里会踩坑。
 > 实现见 `ios-santoni/xnu/patches/0253-wt86047-log-to-system-v2.patch`；
-> 设计背景与实测见 `REPORT-阶段3-eMMC-Root.md` 第十节。
+> 设计背景与实测见 `docs/archive/REPORT-阶段3-eMMC-Root.md` 第十节。
 
 ## 一句话
 

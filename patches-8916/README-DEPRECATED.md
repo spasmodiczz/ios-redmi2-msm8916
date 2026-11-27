@@ -8,7 +8,7 @@
 
 ## 为什么标废弃
 
-`STATE.md` 第 325 行与 `PLAN-msm8916-v3.md` 第 162 行原先写的是「把 `patches-8916/` 应用到 fork」
+`docs/archive/STATE.md` 第 325 行与 `docs/archive/PLAN-msm8916-v3.md` 第 162 行原先写的是「把 `patches-8916/` 应用到 fork」
 或「把 `patches-8916/` 覆盖到 `xnu/patches/`」。这两句表述是**错误的，且执行后果严重**：
 
 1. 全项目**不存在**任何 `apply-patches` 步骤。CI（`.github/workflows/xnu.yml:115`）只做
