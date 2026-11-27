@@ -1,0 +1,143 @@
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+index 4321dfe..8165754 100755
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -1022,6 +1022,124 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
+ }
+ #endif /* SWEET */
+ 
++#if defined(ARM64_BOARD_CONFIG_WT86047)
++/*
++ * SWEET (WT86047): the A53 in MSM8916 has no ARMv8 crypto extension, yet the
++ * iOS userland executes aese, aesmc, the sha1/sha256 ops and pmull anyway,
++ * because arm64
++ * libcorecrypto binds those implementations at compile time. This decoder is
++ * the first half of the emulation work: it recognises the instruction word,
++ * counts it, and can step over it so that a single boot enumerates every
++ * opcode the real boot path needs.
++ *
++ *	sweetemu=0  (default) leave the exception alone, SIGILL as before
++ *	sweetemu=1  decode + print, still deliver the SIGILL
++ *	sweetemu=2  decode + print + step over the instruction; crypto results
++ *	            are then WRONG, use it only to enumerate opcodes
++ */
++enum sweet_crypto_op {
++	SEO_NONE = 0,
++	SEO_AESE, SEO_AESD, SEO_AESMC, SEO_AESIMC,
++	SEO_SHA1C, SEO_SHA1P, SEO_SHA1M, SEO_SHA1H, SEO_SHA1SU0, SEO_SHA1SU1,
++	SEO_SHA256H, SEO_SHA256H2, SEO_SHA256SU0, SEO_SHA256SU1,
++	SEO_PMULL_Q, SEO_PMULL2_Q, SEO_PMULL_H, SEO_PMULL2_H,
++	SEO_COUNT
++};
++
++struct sweet_crypto_encoding {
++	uint32_t    match;
++	uint32_t    mask;
++	uint8_t     op;
++	uint8_t     nreg;
++	const char *name;
++};
++
++/*
++ * Generated with `llvm-mc -triple=arm64-apple-darwin -mattr=+crypto
++ * -show-encoding` and verified against three different register combinations.
++ * The masks leave out only the register fields (Rd [4:0], Rn [9:5],
++ * Rm [20:16]); two-register forms keep Rm fixed.
++ */
++static const struct sweet_crypto_encoding sweet_crypto_encodings[] = {
++	{ 0x4e284800u, 0xfffffc00u, SEO_AESE,      2, "aese"     },
++	{ 0x4e285800u, 0xfffffc00u, SEO_AESD,      2, "aesd"     },
++	{ 0x4e286800u, 0xfffffc00u, SEO_AESMC,     2, "aesmc"    },
++	{ 0x4e287800u, 0xfffffc00u, SEO_AESIMC,    2, "aesimc"   },
++	{ 0x5e000000u, 0xffe0fc00u, SEO_SHA1C,     3, "sha1c"    },
++	{ 0x5e001000u, 0xffe0fc00u, SEO_SHA1P,     3, "sha1p"    },
++	{ 0x5e002000u, 0xffe0fc00u, SEO_SHA1M,     3, "sha1m"    },
++	{ 0x5e280800u, 0xfffffc00u, SEO_SHA1H,     2, "sha1h"    },
++	{ 0x5e003000u, 0xffe0fc00u, SEO_SHA1SU0,   3, "sha1su0"  },
++	{ 0x5e281800u, 0xfffffc00u, SEO_SHA1SU1,   2, "sha1su1"  },
++	{ 0x5e004000u, 0xffe0fc00u, SEO_SHA256H,   3, "sha256h"  },
++	{ 0x5e005000u, 0xffe0fc00u, SEO_SHA256H2,  3, "sha256h2" },
++	{ 0x5e282800u, 0xfffffc00u, SEO_SHA256SU0, 2, "sha256su0"},
++	{ 0x5e006000u, 0xffe0fc00u, SEO_SHA256SU1, 3, "sha256su1"},
++	{ 0x0ee0e000u, 0xffe0fc00u, SEO_PMULL_Q,   3, "pmull.1q" },
++	{ 0x4ee0e000u, 0xffe0fc00u, SEO_PMULL2_Q,  3, "pmull2.1q"},
++	{ 0x0e20e000u, 0xffe0fc00u, SEO_PMULL_H,   3, "pmull.8h" },
++	{ 0x4e20e000u, 0xffe0fc00u, SEO_PMULL2_H,  3, "pmull2.8h"},
++};
++
++#define SWEET_CRYPTO_ENCODING_COUNT \
++	(sizeof(sweet_crypto_encodings) / sizeof(sweet_crypto_encodings[0]))
++
++TUNABLE(uint32_t, sweet_emu_mode, "-sweetemu", 0);
++
++static uint32_t sweet_emu_hits[SEO_COUNT];
++static uint8_t  sweet_emu_printed[SEO_COUNT];
++
++static const struct sweet_crypto_encoding *
++sweet_crypto_decode(uint32_t instr)
++{
++	uint32_t i;
++
++	for (i = 0; i < SWEET_CRYPTO_ENCODING_COUNT; i++) {
++		if ((instr & sweet_crypto_encodings[i].mask) ==
++		    sweet_crypto_encodings[i].match) {
++			return &sweet_crypto_encodings[i];
++		}
++	}
++	return NULL;
++}
++
++/* Returns TRUE when this exception has already been dealt with. */
++boolean_t
++sweet_crypto_emu_probe(arm_saved_state_t *state, uint32_t instr)
++{
++	const struct sweet_crypto_encoding *enc;
++
++	if (sweet_emu_mode == 0) {
++		return FALSE;
++	}
++
++	enc = sweet_crypto_decode(instr);
++	if (enc == NULL) {
++		return FALSE;
++	}
++
++	sweet_emu_hits[enc->op]++;
++	if (sweet_emu_printed[enc->op] < 3) {
++		sweet_emu_printed[enc->op]++;
++		printf("SWEET EMU %s pc=%p vd=%u vn=%u vm=%d hits=%u mode=%u\n",
++		    enc->name,
++		    (void *)get_saved_state_pc(state),
++		    (unsigned)(instr & 0x1fu),
++		    (unsigned)((instr >> 5) & 0x1fu),
++		    (enc->nreg == 3) ? (int)((instr >> 16) & 0x1fu) : -1,
++		    (unsigned)sweet_emu_hits[enc->op],
++		    (unsigned)sweet_emu_mode);
++	}
++
++	if (sweet_emu_mode < 2) {
++		return FALSE;
++	}
++
++	add_saved_state_pc(state, 4u);
++	return TRUE;
++}
++#endif /* ARM64_BOARD_CONFIG_WT86047 */
++
+ /*
+  * Uncategorized exceptions are a catch-all for general execution errors.
+  * ARM64_TODO: For now, we assume this is for undefined instruction exceptions.
+@@ -1036,6 +1154,13 @@ handle_uncategorized(arm_saved_state_t *state)
+ 
+ 	COPYIN(get_saved_state_pc(state), (char *)&instr, sizeof(instr));
+ 
++#if defined(ARM64_BOARD_CONFIG_WT86047)
++	if (PSR64_IS_USER64(get_saved_state_cpsr(state)) &&
++	    sweet_crypto_emu_probe(state, instr)) {
++		return;
++	}
++#endif /* ARM64_BOARD_CONFIG_WT86047 */
++
+ #if defined(SWEET)
+ 	if (PSR64_IS_USER64(get_saved_state_cpsr(state)) && sweet_emulate_lse(state, instr)) {
+ 		return;
