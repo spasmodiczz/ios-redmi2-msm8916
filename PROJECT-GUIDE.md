@@ -604,6 +604,17 @@ FB: swap 4800 layer 0 surface 2 1125x2436 ... b 0,0 1125x2436
 建议在 `IOMobileFramebufferUserClient::initWithTask` 与 `AppleCLCD::addClient` 加埋点，
 并对比 boot 20 与 boot 24 的 backboardd IOK `sweetiolog` 序列。
 
+**【用户纠正 · 前提事实，优先级高于本节任何推断】**
+1. 本项目**从未实现全屏**：shim 从最开始到现在**都没有突破上半屏**。所以「320 行窗口在屏幕
+   底部/顶部」「整屏几何已解决」这类表述都只是**内核模型**层面的变化，**不代表面板真的全屏显示**。
+   `0261` 让驱动以为自己驱动 720×1280，但硬件扫描仍是 LK 设定的那一部分，屏幕上「毫无变化」
+   与此完全一致——不是回归，也不是几何算错。
+2. 因此后续任何与「全屏」有关的结论，必须**同时**有面板实测（可见区域扩大到多少）支撑，
+   不能只凭 `AppleCLCD ... 720x1280` 这行日志。日志只证明内核侧的模型，不证明硬件扫描。
+3. 措辞统一为**内存临时启动**（`fastboot boot`，不写任何分区），不要用「刷入/刷机」。
+   判断是否真的完成传输，必须看到 `Sending 'boot.img' (…KB) OKAY` 这一行；只有 `Booting` 说明
+   镜像未传输，设备会继续正常启动（现象：出现 MI 标志而不是 iOS 画面）。
+
 **设备操作纠正（2026-11-27，实测）**：`fastboot reboot recovery` 返回 OKAY 但不进 recovery；
 `fastboot oem reboot-recovery` 报 `unknown command`；`fastboot boot <img>` **可用但要求纯 ASCII 路径**
 （中文文件名会导致失败），把 TWRP 复制成 `tmp/twrp.img` 即可；`fastboot boot` 传输中断后
