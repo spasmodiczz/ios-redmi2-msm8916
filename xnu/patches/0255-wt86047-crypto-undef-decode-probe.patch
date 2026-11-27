@@ -1,5 +1,5 @@
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
-index 4321dfe..24be98c 100755
+index 4321dfe..ecbc39d 100755
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
 @@ -148,7 +148,7 @@ static void handle_pac_fail(arm_saved_state_t *state, uint32_t esr) __dead2;
@@ -29,7 +29,7 @@ index 4321dfe..24be98c 100755
  	}
  
  #ifdef CONFIG_XNUPOST
-@@ -1022,13 +1022,626 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
+@@ -1022,13 +1022,710 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
  }
  #endif /* SWEET */
  
@@ -551,6 +551,78 @@ index 4321dfe..24be98c 100755
 +	sweet_sha_store(vd, d);
 +}
 +
++/*
++ * --- PMULL (GHASH) ---------------------------------------------------------
++ *
++ * pmull.1q multiplies two 64-bit polynomials into 128 bits; pmull2.1q does the
++ * same on the high halves. The 8h forms are eight independent 8x8 products and
++ * are not on the GCM path, but they are cheap to provide. Results are built in
++ * a local buffer so vd may alias vn/vm.
++ */
++
++static uint16_t
++sweet_clmul8(uint8_t a, uint8_t b)
++{
++	uint16_t r = 0;
++	unsigned i;
++
++	for (i = 0; i < 8; i++) {
++		if ((b >> i) & 1u) {
++			r ^= (uint16_t)a << i;
++		}
++	}
++	return r;
++}
++
++static void
++sweet_pmull64(uint64_t a, uint64_t b, uint8_t out[16])
++{
++	uint64_t lo = 0, hi = 0;
++	unsigned i;
++
++	for (i = 0; i < 64; i++) {
++		if ((b >> i) & 1u) {
++			lo ^= a << i;
++			if (i != 0) {
++				hi ^= a >> (64 - i);
++			}
++		}
++	}
++	sweet_sha_store64(&out[0], lo);
++	sweet_sha_store64(&out[8], hi);
++}
++
++static void
++sweet_pmull_q(uint8_t *vd, const uint8_t *vn, const uint8_t *vm, boolean_t high)
++{
++	unsigned off = high ? 8u : 0u;
++	uint8_t out[16];
++	unsigned i;
++
++	sweet_pmull64(sweet_sha_load64(&vn[off]), sweet_sha_load64(&vm[off]), out);
++	for (i = 0; i < 16; i++) {
++		vd[i] = out[i];
++	}
++}
++
++static void
++sweet_pmull_h(uint8_t *vd, const uint8_t *vn, const uint8_t *vm, boolean_t high)
++{
++	unsigned base = high ? 8u : 0u;
++	uint8_t out[16];
++	unsigned i;
++
++	for (i = 0; i < 8; i++) {
++		uint16_t r = sweet_clmul8(vn[base + i], vm[base + i]);
++
++		out[2 * i] = (uint8_t)r;
++		out[2 * i + 1] = (uint8_t)(r >> 8);
++	}
++	for (i = 0; i < 16; i++) {
++		vd[i] = out[i];
++	}
++}
++
 +/* Returns TRUE when this exception has already been dealt with. */
 +boolean_t
 +sweet_crypto_emu_probe(arm_context_t *context, uint32_t instr)
@@ -567,9 +639,9 @@ index 4321dfe..24be98c 100755
 +		return FALSE;
 +	}
 +
-+	/* AESE .. SHA256SU1 are the opcodes we can now emulate for real */
++	/* AESE .. PMULL2_H are the opcodes we can now emulate for real */
 +	emulate = (sweet_emu_mode >= 3) && (enc->op >= SEO_AESE) &&
-+	    (enc->op <= SEO_SHA256SU1);
++	    (enc->op <= SEO_PMULL2_H);
 +
 +	sweet_emu_hits[enc->op]++;
 +	if (sweet_emu_printed[enc->op] < 3) {
@@ -635,6 +707,18 @@ index 4321dfe..24be98c 100755
 +		case SEO_SHA256SU1:
 +			sweet_sha256su1(d, n, m);
 +			break;
++		case SEO_PMULL_Q:
++			sweet_pmull_q(d, n, m, FALSE);
++			break;
++		case SEO_PMULL2_Q:
++			sweet_pmull_q(d, n, m, TRUE);
++			break;
++		case SEO_PMULL_H:
++			sweet_pmull_h(d, n, m, FALSE);
++			break;
++		case SEO_PMULL2_H:
++			sweet_pmull_h(d, n, m, TRUE);
++			break;
 +		default:
 +			break;
 +		}
@@ -657,7 +741,7 @@ index 4321dfe..24be98c 100755
  	exception_type_t           exception = EXC_BAD_INSTRUCTION;
  	mach_exception_data_type_t codes[2]  = {EXC_ARM_UNDEFINED};
  	mach_msg_type_number_t     numcodes  = 2;
-@@ -1036,6 +1649,13 @@ handle_uncategorized(arm_saved_state_t *state)
+@@ -1036,6 +1733,13 @@ handle_uncategorized(arm_saved_state_t *state)
  
  	COPYIN(get_saved_state_pc(state), (char *)&instr, sizeof(instr));
  
