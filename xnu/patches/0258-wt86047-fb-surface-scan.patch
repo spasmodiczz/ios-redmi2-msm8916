@@ -1,0 +1,87 @@
+diff --git a/iokit/Kernel/arm/SweetFramebuffer.cpp b/iokit/Kernel/arm/SweetFramebuffer.cpp
+index 2899ef7..8bfadb6 100644
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -615,6 +615,66 @@ get32(const uint8_t *p, uint32_t off)
+ 
+ static uint32_t sweet_fb_swaps_logged;
+ 
++/*
++ * SWEET FBSURF: is anything drawn at all?
++ *
++ * A black and static presented frame has two very different causes: nobody
++ * drew (a daemon held before it renders), or we present the wrong surface.
++ * This walks every live IOSurface and reports how many pixels are not black,
++ * which separates the two without a camera.
++ *
++ *	sweetfbsurf=1	report at the first swaps and then every 300th
++ *
++ * Sampling every 4th pixel in both directions is enough to tell "empty" from
++ * "has content", and keeps the cost off the present path.
++ */
++#define SWEET_FBSURF_IDS     12
++#define SWEET_FBSURF_REPORTS 6
++
++static uint32_t sweet_fbsurf_reports;
++
++static void
++sweet_fb_surface_report(void)
++{
++	uint32_t id;
++
++	if (sweet_fbsurf_reports >= SWEET_FBSURF_REPORTS) {
++		return;
++	}
++	sweet_fbsurf_reports++;
++	for (id = 1; id <= SWEET_FBSURF_IDS; id++) {
++		SweetSurface *s = sweet_surface_copy(id);
++		uintptr_t base;
++		uint32_t lit = 0, seen = 0, x, y;
++
++		if (s == NULL) {
++			continue;
++		}
++		base = s->kernelAddress();
++		if (base != 0 && s->memory != NULL && s->width > 0 && s->height > 0 &&
++		    s->bytesPerRow >= s->width * 4) {
++			for (y = 0; y < s->height; y += 4) {
++				const uint8_t *line = (const uint8_t *)(base + s->offset +
++				    (uint64_t)y * s->bytesPerRow);
++
++				for (x = 0; x < s->width; x += 4) {
++					const uint8_t *px = line + (uint64_t)x * 4;
++
++					seen++;
++					if (px[0] > 8 || px[1] > 8 || px[2] > 8) {
++						lit++;
++					}
++				}
++			}
++		}
++		IOLog("SWEET FBSURF id %u %ux%u bpr %u off 0x%llx lit %u of %u\n",
++		    id, s->width, s->height, s->bytesPerRow,
++		    (unsigned long long)s->offset, lit, seen);
++		s->release();
++	}
++}
++
++
+ /*
+  * SWEET FBVIEW: a text screenshot of the composed frame.
+  *
+@@ -1374,6 +1434,15 @@ AppleCLCD::present(const uint8_t *rec)
+ 		s->release();
+ 	}
+ 	sweet_fbview(dst, fWidth, fHeight, fRowBytes);
++	{
++		int want = 0;
++		uint32_t swapno = get32(rec, 0x50);
++
++		if (PE_parse_boot_argn("sweetfbsurf", &want, sizeof(want)) && want != 0 &&
++		    (swapno <= 2 || (swapno != 0 && (swapno % 300u) == 0u))) {
++			sweet_fb_surface_report();
++		}
++	}
+ 	if (fFlip[0] != NULL) {
+ 		flipBack();
+ 	} else {
