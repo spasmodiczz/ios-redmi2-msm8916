@@ -1,0 +1,46 @@
+diff --git a/iokit/Kernel/arm/SweetFramebuffer.cpp b/iokit/Kernel/arm/SweetFramebuffer.cpp
+index 4a56955..5e8244b 100644
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -299,6 +299,41 @@ AppleCLCD::start(IOService *provider)
+ 	fWidth = (uint32_t)video.v_width;
+ 	fHeight = (uint32_t)video.v_height;
+ 	fRowBytes = (uint32_t)video.v_rowBytes;
++
++	/*
++	 * The bootloader's video mode is the console window it set up, not the
++	 * panel: LK reports 720x320 at 0x831fa400, which is row 960 of the real
++	 * 720x1280 ABL splash buffer at 0x83000000. PE_Video is filled from the
++	 * bootloader, so changing the ADT's sweet-fbcon node cannot move the
++	 * driver off that window -- measured: with the ADT carrying the full
++	 * panel, PE video still reported 0x831fa400 720x320.
++	 *
++	 *	sweetfb_row=960	row at which the reported window starts
++	 *	sweetfb_rows=N	height of the real panel (0 = keep the window)
++	 *
++	 * The panel base is derived from the reported one, so no absolute
++	 * address is duplicated here. The console keeps using sweet-fbcon.
++	 */
++	{
++		int prow = 960, prows = 0;
++
++		(void)PE_parse_boot_argn("sweetfb_row", &prow, sizeof(prow));
++		(void)PE_parse_boot_argn("sweetfb_rows", &prows, sizeof(prows));
++		if (prows > 0 && (uint32_t)prows != fHeight && prow >= 0) {
++			uint64_t skip = (uint64_t)prow * (uint64_t)fRowBytes;
++
++			if (skip <= (uint64_t)fPhys) {
++				IOLog("SWEET FB: panel override rows %u row %d: base 0x%llx -> 0x%llx, height %u -> %d\n",
++				    fHeight, prow, (unsigned long long)fPhys,
++				    (unsigned long long)((uint64_t)fPhys - skip), fHeight, prows);
++				fPhys -= skip;
++				fHeight = (uint32_t)prows;
++			} else {
++				IOLog("SWEET FB: panel override rejected (base 0x%llx below row %d)\n",
++				    (unsigned long long)fPhys, prow);
++			}
++		}
++	}
+ 	fPanelStride = fRowBytes;
+ 	/*
+ 	 * wt86047: the ABL continuous-splash framebuffer is 24-bit BGR with a
