@@ -1,0 +1,119 @@
+diff --git a/iokit/Kernel/arm/SweetFramebuffer.cpp b/iokit/Kernel/arm/SweetFramebuffer.cpp
+index bb8d647..e2a0139 100644
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -615,6 +615,71 @@ get32(const uint8_t *p, uint32_t off)
+ 
+ static uint32_t sweet_fb_swaps_logged;
+ 
++/*
++ * SWEET FB FIT: show the whole canvas on a smaller panel.
++ *
++ * 0168's copy path is 1:1 on purpose: iOS composites at the canvas size and
++ * the kernel crops it to the panel with fOffX/fOffY, so nothing is ever
++ * scaled. That is correct and cheap, but on this board the panel window is
++ * 720x320 while the canvas is 1125x2436, so the crop shows about a sixteenth
++ * of the screen.
++ *
++ *	sweetfb_fit=1	stretch the whole layer surface over the panel
++ *	sweetfb_fit=2	keep the aspect ratio and letterbox
++ *
++ * Nearest neighbour on purpose: the panel is a debug window here, and a
++ * box filter would cost 4x the reads for a picture that is already distorted.
++ * The 1:1 path is untouched when the argument is absent.
++ */
++#define SWEET_FB_FIT_MAX_W 1024
++
++static uint32_t
++sweet_fb_fit_mode(void)
++{
++	static int cached = -1;
++	int v = 0;
++
++	if (cached < 0) {
++		cached = (PE_parse_boot_argn("sweetfb_fit", &v, sizeof(v)) && v > 0) ? v : 0;
++	}
++	return (uint32_t)cached;
++}
++
++static void
++sweet_fb_scale_into(uint8_t *dst, uint32_t dstStride, uint32_t dstX, uint32_t dstY,
++    uint32_t outW, uint32_t outH, const uint8_t *src, uint32_t srcStride,
++    uint32_t srcW, uint32_t srcH)
++{
++	uint16_t xmap[SWEET_FB_FIT_MAX_W];
++	uint32_t x, y;
++
++	if (outW == 0 || outH == 0 || srcW == 0 || srcH == 0) {
++		return;
++	}
++	if (outW <= SWEET_FB_FIT_MAX_W) {
++		for (x = 0; x < outW; x++) {
++			xmap[x] = (uint16_t)(((uint64_t)x * srcW) / outW);
++		}
++	}
++	for (y = 0; y < outH; y++) {
++		const uint8_t *srow = src + (uint64_t)(((uint64_t)y * srcH) / outH) * srcStride;
++		uint8_t *drow = dst + (uint64_t)(dstY + y) * dstStride + (uint64_t)dstX * 4;
++
++		if (outW <= SWEET_FB_FIT_MAX_W) {
++			for (x = 0; x < outW; x++) {
++				memcpy(drow + (uint64_t)x * 4, srow + (uint64_t)xmap[x] * 4, 4);
++			}
++		} else {
++			for (x = 0; x < outW; x++) {
++				uint32_t sx = (uint32_t)(((uint64_t)x * srcW) / outW);
++
++				memcpy(drow + (uint64_t)x * 4, srow + (uint64_t)sx * 4, 4);
++			}
++		}
++	}
++}
++
++
+ /*
+  * SWEET FBSURF: is anything drawn at all?
+  *
+@@ -1429,10 +1494,38 @@ AppleCLCD::present(const uint8_t *rec)
+ 			src = 0;
+ 		}
+ 		if (src != 0 && bpe == 4) {
+-			for (int32_t y = 0; y < h; y++) {
+-				memcpy((void *)(dst + (uint64_t)(dy + y) * fRowBytes + (uint64_t)dx * 4),
+-				    (const void *)(src + s->offset + (uint64_t)(sy + y) * s->bytesPerRow + (uint64_t)sx * 4),
+-				    (size_t)w * 4);
++			uint32_t fit = sweet_fb_fit_mode();
++
++			if (fit != 0) {
++				/*
++				 * Ignore the cropped rect: the point is the whole
++				 * surface, fitted onto the panel.
++				 */
++				uint32_t outW = fWidth, outH = fHeight;
++				uint32_t outX = 0, outY = 0;
++
++				if (fit == 2) {
++					uint64_t byW = ((uint64_t)fWidth << 16) / s->width;
++					uint64_t byH = ((uint64_t)fHeight << 16) / s->height;
++					uint64_t k = byW < byH ? byW : byH;
++
++					outW = (uint32_t)(((uint64_t)s->width * k) >> 16);
++					outH = (uint32_t)(((uint64_t)s->height * k) >> 16);
++					if (outW == 0 || outH == 0) {
++						outW = outH = 1;
++					}
++					outX = (fWidth - outW) / 2;
++					outY = (fHeight - outH) / 2;
++				}
++				sweet_fb_scale_into(dst, fRowBytes, outX, outY, outW, outH,
++				    (const uint8_t *)(src + s->offset), s->bytesPerRow,
++				    (uint32_t)s->width, (uint32_t)s->height);
++			} else {
++				for (int32_t y = 0; y < h; y++) {
++					memcpy((void *)(dst + (uint64_t)(dy + y) * fRowBytes + (uint64_t)dx * 4),
++					    (const void *)(src + s->offset + (uint64_t)(sy + y) * s->bytesPerRow + (uint64_t)sx * 4),
++					    (size_t)w * 4);
++				}
+ 			}
+ 		}
+ 		s->release();
