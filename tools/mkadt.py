@@ -23,9 +23,30 @@ GICC, GICC_SIZE = 0x0b002000, 0x1000
 # wt86047 (msm8916): DTB splash_region@83000000, 20 MiB. The santoni value
 # (0x90001000) is a different region on this SoC -- writing there draws
 # nothing and tramples memory xnu may use.
-FB, FB_SIZE = 0x83000000 + 960 * 2160, 720 * 320 * 3
+FB_BASE = 0x83000000
+# The ABL continuous-splash buffer is the whole 720x1280 panel (stride 2160,
+# 24-bit BGR). The kernel used to be told only about its bottom 320 rows, which
+# left the composed frame a window of the real screen; SWEET_FB_PANEL=720x1280
+# hands it the full buffer instead. Default stays the old 320-row window.
+FB, FB_SIZE = FB_BASE + 960 * 2160, 720 * 320 * 3
 SWEET_ECID = 0x5754383630343721  # 'WT86047' + 1, synthetic
 FB_W, FB_H, FB_STRIDE = 720, 320, 720 * 3
+
+
+def apply_panel_override():
+    """SWEET_FB_PANEL=WxH: publish the whole panel instead of a 320-row window."""
+    global FB, FB_SIZE, FB_W, FB_H, FB_STRIDE
+    want = os.environ.get("SWEET_FB_PANEL", "").strip().lower()
+    if not want:
+        return
+    try:
+        w, h = (int(v) for v in want.split("x"))
+    except ValueError:
+        raise SystemExit(f"SWEET_FB_PANEL: expected WxH, got {want!r}")
+    if w <= 0 or h <= 0:
+        raise SystemExit(f"SWEET_FB_PANEL: bad geometry {want!r}")
+    FB_W, FB_H, FB_STRIDE = w, h, w * 3
+    FB, FB_SIZE = FB_BASE, w * h * 3
 TIMEBASE = 19200000
 VTIMER_INTID = 20
 # QEMU virt (-M virt,gic-version=2 -cpu cortex-a53): GICD/GICC and the generic timer's CNTFRQ
@@ -75,6 +96,7 @@ def node(name, props=(), children=()):
 
 
 def build(seed=None, qemu=False, native=False):
+    apply_panel_override()
     """qemu=True: same tree, but with QEMU virt's GIC addresses and CNTFRQ (tools/qemu-sweet.py)."""
     phys_base, mem_size = PHYS_BASE, MEM_SIZE
     gicd, gicc, timebase = (QEMU_GICD, QEMU_GICC, QEMU_TIMEBASE) if qemu else (GICD, GICC, TIMEBASE)
