@@ -615,6 +615,36 @@ FB: swap 4800 layer 0 surface 2 1125x2436 ... b 0,0 1125x2436
    判断是否真的完成传输，必须看到 `Sending 'boot.img' (…KB) OKAY` 这一行；只有 `Booting` 说明
    镜像未传输，设备会继续正常启动（现象：出现 MI 标志而不是 iOS 画面）。
 
+**【用户补充的现场判定标准，优先采用】**
+- 是否在 fastboot：**以 `fastboot` 命令为准**，不看屏幕。
+- FB 模式下 **MI 标志与米兔都可能出现**，两者都属正常，不能据此推断状态。
+- 镜像是否真的启动：看**屏幕上半部分是否出现白条状小字**（内核控制台输出）。
+
+**boot 20 之后显示彻底消失的真正原因（2026-11-28 05:00，按启动统计，`[实测]`）**：
+| boot | containermanager 崩溃 | `IOMobileFramebuffer` 查找 | `SWEET FB: swap` |
+|---|---|---|---|
+| 18 | 0 | 1 | 有 |
+| 19 | 0 | 1 | 有 |
+| 20 | 0 | 1 | 有（196,200 次） |
+| **21** | **126** | **0** | **0** |
+| 22 | 78 | 0 | 0 |
+| 23–25 | 57–72 | 0 | 0 |
+
+分界线精确落在 **boot 20 之后**，而 boot 20 正是那次持续 79 分钟、大量写入可写根的数据迁移。
+推断（`[推断]`，证据强）：**迁移把设备上的 userdata 写坏 → containermanagerd 崩溃循环 →
+backboardd 拿不到容器 → 不再初始化显示**。这与「进不到 iOS 界面」完全一致，
+且与显示驱动、几何参数**无关**。
+
+注意：`E:/ios-rootfs/iOSRoot.img` 是 **PC 上的源镜像**，设备写入的是**手机 userdata 分区**，
+所以本地检查只反映基线（基线本身就没有 `/private/var/containers`，而 boots 18–20 崩溃为 0）。
+要看设备侧的真实状态，必须在 TWRP 里挂载 userdata 检查。
+
+**下一步（优先于任何显示工作）**：
+1. TWRP 内只读检查设备 userdata 的 `/private/var`（containers 是否被写成半成品、权限是否错乱）；
+2. 用已知良好的 `iOSRoot.img` 重新制 `.simg` 并回写 userdata，把损坏复位；
+3. 回写后**先抑制迁移**（参考手记 v12 做法：`LastSystemVersion` + `containers` 目录齐备），
+   再启动，避免再次被同一个迁移写坏。
+
 **设备操作纠正（2026-11-27，实测）**：`fastboot reboot recovery` 返回 OKAY 但不进 recovery；
 `fastboot oem reboot-recovery` 报 `unknown command`；`fastboot boot <img>` **可用但要求纯 ASCII 路径**
 （中文文件名会导致失败），把 TWRP 复制成 `tmp/twrp.img` 即可；`fastboot boot` 传输中断后
