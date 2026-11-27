@@ -1,8 +1,8 @@
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
-index 4321dfe..3fe0d7c 100755
+index 4321dfe..d3a2a0a 100755
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
-@@ -1022,6 +1022,366 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
+@@ -1022,6 +1022,661 @@ sweet_emulate_lse(arm_saved_state_t *state, uint32_t instr)
  }
  #endif /* SWEET */
  
@@ -314,6 +314,261 @@ index 4321dfe..3fe0d7c 100755
 +	}
 +}
 +
++/*
++ * --- SHA-1 / SHA-256 instructions ------------------------------------------
++ *
++ * Semantics ported from QEMU's target/arm/tcg/crypto_helper.c, which mirrors
++ * the Arm pseudocode. Words are little endian inside the 16-byte register, the
++ * layout every one of these instructions assumes.
++ */
++
++static uint32_t
++sweet_sha_rol(uint32_t x, unsigned n)
++{
++	return (uint32_t)((x << n) | (x >> (32 - n)));
++}
++
++static uint32_t
++sweet_sha_ror(uint32_t x, unsigned n)
++{
++	return (uint32_t)((x >> n) | (x << (32 - n)));
++}
++
++static uint32_t
++sweet_sha_ch(uint32_t x, uint32_t y, uint32_t z)
++{
++	return (uint32_t)((x & (y ^ z)) ^ z);
++}
++
++static uint32_t
++sweet_sha_par(uint32_t x, uint32_t y, uint32_t z)
++{
++	return (uint32_t)(x ^ y ^ z);
++}
++
++static uint32_t
++sweet_sha_maj(uint32_t x, uint32_t y, uint32_t z)
++{
++	return (uint32_t)((x & y) | ((x | y) & z));
++}
++
++static uint32_t
++sweet_sha_big_s0(uint32_t x)
++{
++	return (uint32_t)(sweet_sha_ror(x, 2) ^ sweet_sha_ror(x, 13) ^ sweet_sha_ror(x, 22));
++}
++
++static uint32_t
++sweet_sha_big_s1(uint32_t x)
++{
++	return (uint32_t)(sweet_sha_ror(x, 6) ^ sweet_sha_ror(x, 11) ^ sweet_sha_ror(x, 25));
++}
++
++static uint32_t
++sweet_sha_small_s0(uint32_t x)
++{
++	return (uint32_t)(sweet_sha_ror(x, 7) ^ sweet_sha_ror(x, 18) ^ (x >> 3));
++}
++
++static uint32_t
++sweet_sha_small_s1(uint32_t x)
++{
++	return (uint32_t)(sweet_sha_ror(x, 17) ^ sweet_sha_ror(x, 19) ^ (x >> 10));
++}
++
++static void
++sweet_sha_load(const uint8_t *p, uint32_t w[4])
++{
++	unsigned i;
++
++	for (i = 0; i < 4; i++) {
++		w[i] = (uint32_t)p[4 * i] | ((uint32_t)p[4 * i + 1] << 8) |
++		    ((uint32_t)p[4 * i + 2] << 16) | ((uint32_t)p[4 * i + 3] << 24);
++	}
++}
++
++static void
++sweet_sha_store(uint8_t *p, const uint32_t w[4])
++{
++	unsigned i;
++
++	for (i = 0; i < 4; i++) {
++		p[4 * i] = (uint8_t)w[i];
++		p[4 * i + 1] = (uint8_t)(w[i] >> 8);
++		p[4 * i + 2] = (uint8_t)(w[i] >> 16);
++		p[4 * i + 3] = (uint8_t)(w[i] >> 24);
++	}
++}
++
++static uint64_t
++sweet_sha_load64(const uint8_t *p)
++{
++	uint64_t v = 0;
++	unsigned i;
++
++	for (i = 0; i < 8; i++) {
++		v |= (uint64_t)p[i] << (8 * i);
++	}
++	return v;
++}
++
++static void
++sweet_sha_store64(uint8_t *p, uint64_t v)
++{
++	unsigned i;
++
++	for (i = 0; i < 8; i++) {
++		p[i] = (uint8_t)(v >> (8 * i));
++	}
++}
++
++/* sha1c / sha1p / sha1m: four rounds at once, the state kept b-rotated */
++static void
++sweet_sha1_rounds(uint8_t op, uint8_t *vd, const uint8_t *vn, const uint8_t *vm)
++{
++	uint32_t d[4], n[4], m[4];
++	unsigned i;
++
++	sweet_sha_load(vd, d);
++	sweet_sha_load(vn, n);
++	sweet_sha_load(vm, m);
++
++	for (i = 0; i < 4; i++) {
++		uint32_t f, t;
++
++		switch (op) {
++		case SEO_SHA1C:
++			f = sweet_sha_ch(d[1], d[2], d[3]);
++			break;
++		case SEO_SHA1P:
++			f = sweet_sha_par(d[1], d[2], d[3]);
++			break;
++		default:
++			f = sweet_sha_maj(d[1], d[2], d[3]);
++			break;
++		}
++		t = f + sweet_sha_rol(d[0], 5) + n[0] + m[i];
++		n[0] = d[3];
++		d[3] = d[2];
++		d[2] = sweet_sha_ror(d[1], 2);
++		d[1] = d[0];
++		d[0] = t;
++	}
++	sweet_sha_store(vd, d);
++}
++
++/* sha1su0 works on the two 64-bit halves, not on words */
++static void
++sweet_sha1su0(uint8_t *vd, const uint8_t *vn, const uint8_t *vm)
++{
++	uint64_t d0 = sweet_sha_load64(&vd[0]);
++	uint64_t d1 = sweet_sha_load64(&vd[8]);
++	uint64_t n0 = sweet_sha_load64(&vn[0]);
++	uint64_t m0 = sweet_sha_load64(&vm[0]);
++	uint64_t m1 = sweet_sha_load64(&vm[8]);
++
++	sweet_sha_store64(&vd[0], d1 ^ d0 ^ m0);
++	sweet_sha_store64(&vd[8], n0 ^ d1 ^ m1);
++}
++
++static void
++sweet_sha1h(uint8_t *vd, const uint8_t *vn)
++{
++	uint32_t n[4];
++
++	sweet_sha_load(vn, n);
++	n[0] = sweet_sha_ror(n[0], 2);
++	n[1] = 0;
++	n[2] = 0;
++	n[3] = 0;
++	sweet_sha_store(vd, n);
++}
++
++static void
++sweet_sha1su1(uint8_t *vd, const uint8_t *vn)
++{
++	uint32_t d[4], m[4];
++
++	sweet_sha_load(vd, d);
++	sweet_sha_load(vn, m);
++
++	d[0] = sweet_sha_rol(d[0] ^ m[1], 1);
++	d[1] = sweet_sha_rol(d[1] ^ m[2], 1);
++	d[2] = sweet_sha_rol(d[2] ^ m[3], 1);
++	d[3] = sweet_sha_rol(d[3] ^ d[0], 1);
++	sweet_sha_store(vd, d);
++}
++
++/* sha256h / sha256h2 share the round shape but differ in which half is fed */
++static void
++sweet_sha256_rounds(uint8_t op, uint8_t *vd, const uint8_t *vn, const uint8_t *vm)
++{
++	uint32_t d[4], n[4], m[4];
++	unsigned i;
++
++	sweet_sha_load(vd, d);
++	sweet_sha_load(vn, n);
++	sweet_sha_load(vm, m);
++
++	for (i = 0; i < 4; i++) {
++		uint32_t t;
++
++		if (op == SEO_SHA256H) {
++			t = sweet_sha_ch(n[0], n[1], n[2]) + n[3] +
++			    sweet_sha_big_s1(n[0]) + m[i];
++			n[3] = n[2];
++			n[2] = n[1];
++			n[1] = n[0];
++			n[0] = d[3] + t;
++
++			t += sweet_sha_maj(d[0], d[1], d[2]) + sweet_sha_big_s0(d[0]);
++			d[3] = d[2];
++			d[2] = d[1];
++			d[1] = d[0];
++			d[0] = t;
++		} else {
++			t = sweet_sha_ch(d[0], d[1], d[2]) + d[3] +
++			    sweet_sha_big_s1(d[0]) + m[i];
++			d[3] = d[2];
++			d[2] = d[1];
++			d[1] = d[0];
++			d[0] = n[3 - i] + t;
++		}
++	}
++	sweet_sha_store(vd, d);
++}
++
++static void
++sweet_sha256su0(uint8_t *vd, const uint8_t *vn)
++{
++	uint32_t d[4], m[4];
++
++	sweet_sha_load(vd, d);
++	sweet_sha_load(vn, m);
++
++	d[0] += sweet_sha_small_s0(d[1]);
++	d[1] += sweet_sha_small_s0(d[2]);
++	d[2] += sweet_sha_small_s0(d[3]);
++	d[3] += sweet_sha_small_s0(m[0]);
++	sweet_sha_store(vd, d);
++}
++
++static void
++sweet_sha256su1(uint8_t *vd, const uint8_t *vn, const uint8_t *vm)
++{
++	uint32_t d[4], n[4], m[4];
++
++	sweet_sha_load(vd, d);
++	sweet_sha_load(vn, n);
++	sweet_sha_load(vm, m);
++
++	d[0] += sweet_sha_small_s1(m[2]) + n[1];
++	d[1] += sweet_sha_small_s1(m[3]) + n[2];
++	d[2] += sweet_sha_small_s1(d[0]) + n[3];
++	d[3] += sweet_sha_small_s1(d[1]) + m[0];
++	sweet_sha_store(vd, d);
++}
++
 +/* Returns TRUE when this exception has already been dealt with. */
 +boolean_t
 +sweet_crypto_emu_probe(arm_saved_state_t *state, uint32_t instr)
@@ -330,8 +585,9 @@ index 4321dfe..3fe0d7c 100755
 +		return FALSE;
 +	}
 +
-+	/* SEO_AESE .. SEO_AESIMC are the four AES forms we can emulate for real */
-+	emulate = (sweet_emu_mode >= 3) && (enc->op <= SEO_AESIMC);
++	/* AESE .. SHA256SU1 are the opcodes we can now emulate for real */
++	emulate = (sweet_emu_mode >= 3) && (enc->op >= SEO_AESE) &&
++	    (enc->op <= SEO_SHA256SU1);
 +
 +	sweet_emu_hits[enc->op]++;
 +	if (sweet_emu_printed[enc->op] < 3) {
@@ -355,9 +611,48 @@ index 4321dfe..3fe0d7c 100755
 +		struct sweet_vregs vr;
 +		unsigned vd = instr & 0x1fu;
 +		unsigned vn = (instr >> 5) & 0x1fu;
++		unsigned vm = (instr >> 16) & 0x1fu;
++		uint8_t *d, *n, *m;
 +
 +		sweet_vsave(&vr);
-+		sweet_aes_apply(enc->op, (uint8_t *)&vr.q[vd], (const uint8_t *)&vr.q[vn]);
++		d = (uint8_t *)&vr.q[vd];
++		n = (uint8_t *)&vr.q[vn];
++		m = (uint8_t *)&vr.q[vm];
++
++		switch (enc->op) {
++		case SEO_AESE:
++		case SEO_AESD:
++		case SEO_AESMC:
++		case SEO_AESIMC:
++			sweet_aes_apply(enc->op, d, n);
++			break;
++		case SEO_SHA1C:
++		case SEO_SHA1P:
++		case SEO_SHA1M:
++			sweet_sha1_rounds(enc->op, d, n, m);
++			break;
++		case SEO_SHA1SU0:
++			sweet_sha1su0(d, n, m);
++			break;
++		case SEO_SHA1H:
++			sweet_sha1h(d, n);
++			break;
++		case SEO_SHA1SU1:
++			sweet_sha1su1(d, n);
++			break;
++		case SEO_SHA256H:
++		case SEO_SHA256H2:
++			sweet_sha256_rounds(enc->op, d, n, m);
++			break;
++		case SEO_SHA256SU0:
++			sweet_sha256su0(d, n);
++			break;
++		case SEO_SHA256SU1:
++			sweet_sha256su1(d, n, m);
++			break;
++		default:
++			break;
++		}
 +		sweet_vrestore(&vr);
 +	}
 +
@@ -369,7 +664,7 @@ index 4321dfe..3fe0d7c 100755
  /*
   * Uncategorized exceptions are a catch-all for general execution errors.
   * ARM64_TODO: For now, we assume this is for undefined instruction exceptions.
-@@ -1036,6 +1396,13 @@ handle_uncategorized(arm_saved_state_t *state)
+@@ -1036,6 +1691,13 @@ handle_uncategorized(arm_saved_state_t *state)
  
  	COPYIN(get_saved_state_pc(state), (char *)&instr, sizeof(instr));
  
