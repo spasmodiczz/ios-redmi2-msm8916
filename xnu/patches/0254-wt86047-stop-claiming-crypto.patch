@@ -1,0 +1,15 @@
+--- a/pexpert/pexpert/arm64/WT86047.h
++++ b/pexpert/pexpert/arm64/WT86047.h
+@@ -18,7 +18,11 @@
+ #define __ARM_COHERENT_CACHE__        1
+ #define __ARM_DEBUG__                 7
+ #define __ARM_ENABLE_SWAP__           1
+-#define __ARM_V8_CRYPTO_EXTENSIONS__  1
++/* wt86047: MSM8916's Cortex-A53 has no ARMv8 crypto extensions (AESE/AESD/
++ * PMULL/SHA all trap). Advertising kHasARMv8Crypto made libcorecrypto pick
++ * the AES-instruction path and take SIGILL, so stay honest and let the
++ * userland library fall back to its software implementation. */
++#define __ARM_V8_CRYPTO_EXTENSIONS__  0
+ /* wt86047: Cortex-A53 is ARMv8.0 (no PAN). MSR PAN is undefined. */
+ #define __ARM_PAN_AVAILABLE__         0
+ 
