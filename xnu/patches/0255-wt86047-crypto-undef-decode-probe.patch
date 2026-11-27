@@ -1,7 +1,16 @@
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
-index 4321dfe..9b0e90a 100755
+index 4321dfe..24be98c 100755
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
+@@ -148,7 +148,7 @@ static void handle_pac_fail(arm_saved_state_t *state, uint32_t esr) __dead2;
+ 
+ extern kern_return_t arm_fast_fault(pmap_t, vm_map_address_t, vm_prot_t, bool, bool);
+ 
+-static void handle_uncategorized(arm_saved_state_t *);
++static void handle_uncategorized(arm_context_t *);
+ 
+ /*
+  * For UBSan trap and continue handling, we must be able to recover
 @@ -822,7 +822,7 @@ sleh_synchronous(arm_context_t *context, uint32_t esr, vm_offset_t far)
  	case ESR_EC_UNCATEGORIZED:
  		assert(!ESR_ISS(esr));
