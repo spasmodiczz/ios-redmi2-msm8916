@@ -1,0 +1,80 @@
+diff --git a/bsd/dev/sweet_sample.c b/bsd/dev/sweet_sample.c
+index b40eccd..3dd61ba 100644
+--- a/bsd/dev/sweet_sample.c
++++ b/bsd/dev/sweet_sample.c
+@@ -86,3 +86,34 @@ sweet_sample_start(void)
+ 		thread_deallocate(thread);
+ 	}
+ }
++
++/*
++ * Sampler entry driven by the console log flusher.
++ *
++ * Starting a dedicated kernel thread at ufs attach never produced a single
++ * sample in this tree: across 16 MiB of ring there were exactly zero "SMP"
++ * lines. The flusher thread provably wakes once a second, so run the walk on
++ * it instead -- that removes the early-boot thread from the picture and makes
++ * every step observable.
++ */
++void
++sweet_sample_once(const char *tag)
++{
++	static bool inited;
++	static int samples;
++
++	if (!inited) {
++		inited = true;
++		if (!PE_parse_boot_argn("sweetsample", sweet_sample_names,
++		    sizeof(sweet_sample_names))) {
++			strlcpy(sweet_sample_names, "SpringBoard,backboardd",
++			    sizeof(sweet_sample_names));
++		}
++	}
++	if (sweet_sample_names[0] == '-') {
++		return;
++	}
++	samples++;
++	printf("SMP --- %s sample %d names %s\n", tag, samples, sweet_sample_names);
++	proc_iterate(PROC_ALLPROCLIST, sweet_sample_proc, NULL, NULL, NULL);
++}
+diff --git a/bsd/dev/wt86047_sdhci.c b/bsd/dev/wt86047_sdhci.c
+index 62d1ceb..c3a12e2 100644
+--- a/bsd/dev/wt86047_sdhci.c
++++ b/bsd/dev/wt86047_sdhci.c
+@@ -3010,6 +3010,27 @@ wt86047_log_marker(void)
+ 	wt86047_log_append(line, (int)(p - line));
+ }
+ 
++extern void sweet_sample_once(const char *tag);
++
++/*
++ * Count flusher wake-ups (one per second) and take a sample at 120 s and then
++ * every 120 s, eight times. Sampling is deliberately after boot: the processes
++ * worth looking at do not exist yet in the first minute.
++ */
++static void
++wt86047_sample_tick(void)
++{
++	static uint32_t secs;
++	static uint32_t samples;
++
++	secs++;
++	if (samples >= 8 || secs < 120 || (secs % 120) != 0) {
++		return;
++	}
++	samples++;
++	sweet_sample_once("flusher");
++}
++
+ static void
+ wt86047_log_thread(__unused void *arg, __unused wait_result_t wr)
+ {
+@@ -3027,6 +3048,8 @@ wt86047_log_thread(__unused void *arg, __unused wait_result_t wr)
+ 	for (;;) {
+ 		(void)tsleep(&wt86047_log_chan, PZERO, "wt86047log", hz);
+ 
++		wt86047_sample_tick();
++
+ 		uint64_t total = os_atomic_load(&wt86047_log_total, relaxed);
+ 		if (total == wt86047_log_flushed) {
+ 			continue;
