@@ -1,0 +1,99 @@
+diff --git a/osfmk/ipc/ipc_mqueue.c b/osfmk/ipc/ipc_mqueue.c
+index d9641dd..9cf1c65 100755
+--- a/osfmk/ipc/ipc_mqueue.c
++++ b/osfmk/ipc/ipc_mqueue.c
+@@ -605,36 +605,11 @@ ipc_mqueue_post(
+ 	struct waitq *waitq = &port->ip_waitq;
+ 	boolean_t destroy_msg = FALSE;
+ 
+-	/*
+-	 * SWEET IPC reply trace.
+-	 *
+-	 * SpringBoard blocks in a synchronous XPC to lsd (_LSCopyServerStore ->
+-	 * _LSContextInitCommon -> send_message_with_reply_sync) and never wakes.
+-	 * Either the request never reached lsd, or lsd replied and the waiter was
+-	 * not woken; sampling cannot tell those apart because both sides sit in
+-	 * mach_msg. Replies carry a send-once right as their remote disposition,
+-	 * so log exactly those, with both pids and the msgh_id, and compare the
+-	 * pids against the sampler's "SMP <name>[pid]" headers afterwards.
+-	 */
+-	{
+-		static int sweet_ipc_logs;
+-		mach_msg_type_name_t remote =
+-		    MACH_MSGH_BITS_REMOTE(kmsg->ikm_header->msgh_bits);
+-
+-		if (sweet_ipc_logs < 2500 &&
+-		    (remote == MACH_MSG_TYPE_MOVE_SEND_ONCE ||
+-		    remote == MACH_MSG_TYPE_MAKE_SEND_ONCE)) {
+-			task_t rt = ip_get_receiver(port);
+-			int spid = task_pid(current_task());
+-			int rpid = rt ? task_pid(rt) : -1;
+-
+-			if (spid > 1 || rpid > 1) {
+-				sweet_ipc_logs++;
+-				printf("SWEET IPC R %d -> %d id %d n %d\n",
+-				    spid, rpid, kmsg->ikm_header->msgh_id, sweet_ipc_logs);
+-			}
+-		}
+-	}
++	/* SWEET IPC reply trace: captured under the port lock, printed after unlock */
++	int sweet_spid = -1;
++	int sweet_rpid = -1;
++	mach_msg_id_t sweet_id = 0;
++	boolean_t sweet_trace = FALSE;
+ 
+ 	ipc_kmsg_trace_send(kmsg, option);
+ 
+@@ -646,6 +621,41 @@ ipc_mqueue_post(
+ 	 */
+ 	ip_mq_lock(port);
+ 
++	{
++		/*
++		 * SpringBoard blocks in a synchronous XPC to lsd and never wakes:
++		 * either the request never reached lsd, or lsd replied and the waiter
++		 * was not woken. Both sides sit in mach_msg, so sampling cannot tell;
++		 * replies carry a send-once right as their remote disposition, so log
++		 * those with both pids and the msgh_id and cross-reference the pids
++		 * against the sampler's "SMP <name>[pid]" headers.
++		 *
++		 * ip_get_receiver() requires the port lock; the printf is deferred to
++		 * the unlock point so that no console work happens under the lock.
++		 */
++		static int sweet_ipc_logs;
++
++		if (sweet_ipc_logs < 2500) {
++			mach_msg_header_t *sweet_hdr = ikm_header(kmsg);
++			mach_msg_type_name_t remote =
++			    MACH_MSGH_BITS_REMOTE(sweet_hdr->msgh_bits);
++
++			if (remote == MACH_MSG_TYPE_MOVE_SEND_ONCE ||
++			    remote == MACH_MSG_TYPE_MAKE_SEND_ONCE) {
++				ipc_space_t space = ip_get_receiver(port);
++				task_t rtask = (space != NULL) ? space->is_task : TASK_NULL;
++
++				sweet_spid = task_pid(current_task());
++				sweet_rpid = (rtask != TASK_NULL) ? task_pid(rtask) : -1;
++				sweet_id = sweet_hdr->msgh_id;
++				if (sweet_spid > 1 || sweet_rpid > 1) {
++					sweet_ipc_logs++;
++					sweet_trace = TRUE;
++				}
++			}
++		}
++	}
++
+ 	/* we may have raced with port destruction! */
+ 	if (!waitq_is_valid(&port->ip_waitq)) {
+ 		destroy_msg = TRUE;
+@@ -794,6 +804,10 @@ out_unlock:
+ 	waitq_clear_promotion_locked(waitq, current_thread());
+ 	waitq_unlock(waitq);
+ 
++	if (sweet_trace) {
++		printf("SWEET IPC R %d -> %d id %d\n", sweet_spid, sweet_rpid, sweet_id);
++	}
++
+ 	if (destroy_msg) {
+ 		ipc_kmsg_destroy(kmsg, IPC_KMSG_DESTROY_ALL);
+ 	}
