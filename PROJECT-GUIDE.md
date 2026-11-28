@@ -701,6 +701,16 @@ containermanagerd 读到这些损坏项后崩溃循环，backboardd 因此拿不
 用默认（`fit=0`）的「舷窗」裁切——取画布中央 720×320、1:1 无缩放——logo 与进度条正好落在其中，
 形态真实，适合目视判断。`fit=1` 只适合「确认整幅画面存在」，不适合读进度。
 
+**【待办 · 全屏显示，用户指定优先方向】**（记于 2026-11-28 08:20）
+目标：让面板真正全屏（720×1280）显示，而不是现在的 320 行窗口。
+事实基础：LK/ABL 自己能把 720×1280 全屏铺满，说明面板与 DSI 链路支持全屏，
+缺的是内核侧把同样的时序/扫描配置程序化 —— 属于显示驱动工作（`wt86047_gpu.c` 的 MDP/DSI
+初始化与面板初始化序列），不是 ADT 或 boot-arg 能解决的。
+**用户要求：参考 lk2nd 等现成方案**（lk2nd 是 MSM8916 上的二级引导器，其 panel/DSI 初始化、
+simplefb 交接与 `msm-fb-refresher` 一类做法可借鉴；仓库本地已有 `lk2nd-msm8916.img`）。
+实现时优先查：DSI 时序参数来源、MDP 扫描行数与 stride、面板上电序列、以及 LK 到内核的
+framebuffer 交接约定。此项排在「SpringBoard 能跑起来」之后，但不要遗忘。
+
 **设备操作纠正（2026-11-27，实测）**：`fastboot reboot recovery` 返回 OKAY 但不进 recovery；
 `fastboot oem reboot-recovery` 报 `unknown command`；`fastboot boot <img>` **可用但要求纯 ASCII 路径**
 （中文文件名会导致失败），把 TWRP 复制成 `tmp/twrp.img` 即可；`fastboot boot` 传输中断后
