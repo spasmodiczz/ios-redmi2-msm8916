@@ -1,0 +1,42 @@
+diff --git a/bsd/kern/sys_ulock.c b/bsd/kern/sys_ulock.c
+index a64c8de..21e9b6d 100755
+--- a/bsd/kern/sys_ulock.c
++++ b/bsd/kern/sys_ulock.c
+@@ -697,19 +697,29 @@ sys_ulock_wait2(struct proc *p, struct ulock_wait2_args *args, int32_t *retval)
+ 	 * at a thread that died while holding it.
+ 	 */
+ 	if (set_owner) {
+-		static int sweet_ulock_logs;
++		static int sweet_sb_logs, sweet_other_logs;
++		int is_sb = (p->p_comm[0] == 'S' && strncmp(p->p_comm, "SpringBoard", 11) == 0);
+ 
+-		if (sweet_ulock_logs < 120 &&
+-		    (owner_thread == self || owner_thread == THREAD_NULL ||
+-		    sweet_ulock_logs < 24)) {
+-			sweet_ulock_logs++;
+-			printf("SWEET ULOCK pid %d tid %d addr 0x%llx val 0x%x "
++		/*
++		 * Only SpringBoard matters here: it is the process that hangs in
++		 * _LSContextInitCommon. Other processes log just the two anomalous
++		 * shapes (waiter is its own owner, or the owner is gone).
++		 */
++		if ((is_sb && sweet_sb_logs < 400) ||
++		    (!is_sb && sweet_other_logs < 40 &&
++		     (owner_thread == self || owner_thread == THREAD_NULL))) {
++			if (is_sb) {
++				sweet_sb_logs++;
++			} else {
++				sweet_other_logs++;
++			}
++			printf("SWEET ULOCK %s pid %d tid %d addr 0x%llx val 0x%x "
+ 			    "self %d owner_tid %d n %d\n",
+-			    proc_pid(p), thread_tid(self),
++			    is_sb ? "SB" : "OT", proc_pid(p), thread_tid(self),
+ 			    (unsigned long long)args->addr, (unsigned)value,
+ 			    (owner_thread == self) ? 1 : 0,
+ 			    (owner_thread == THREAD_NULL) ? -1 : thread_tid(owner_thread),
+-			    sweet_ulock_logs);
++			    is_sb ? sweet_sb_logs : sweet_other_logs);
+ 		}
+ 	}
+ 
