@@ -1,0 +1,26 @@
+diff --git a/bsd/dev/wt86047_sdhci.c b/bsd/dev/wt86047_sdhci.c
+index 3a70337..2a41665 100644
+--- a/bsd/dev/wt86047_sdhci.c
++++ b/bsd/dev/wt86047_sdhci.c
+@@ -38,6 +38,10 @@
+ 
+ #include <sys/param.h>
+ #include <sys/reboot.h>
++
++/* reboot(2) is a userspace declaration; this is the kernel entry it
++ * reaches, and it syncs every mounted filesystem before restarting. */
++extern int reboot_kernel(int howto, char *message);
+ #include <sys/systm.h>
+ #include <sys/buf.h>
+ #include <sys/conf.h>
+@@ -3049,8 +3053,8 @@ wt86047_sample_tick(void)
+ 	if (reboot_at > 0 && (int)secs >= reboot_at) {
+ 		reboot_at = 0;
+ 		printf("SWEET REBOOT at %u s: syncing and restarting\n", secs);
+-		reboot(RB_AUTOBOOT);
+-		printf("SWEET REBOOT: reboot() returned\n");
++		(void)reboot_kernel(RB_AUTOBOOT, NULL);
++		printf("SWEET REBOOT: reboot_kernel() returned\n");
+ 	}
+ 
+ 	if ((int)samples >= count || (int)secs < at || ((int)secs - at) % step != 0) {
