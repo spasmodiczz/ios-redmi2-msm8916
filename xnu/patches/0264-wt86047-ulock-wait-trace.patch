@@ -1,0 +1,34 @@
+diff --git a/bsd/kern/sys_ulock.c b/bsd/kern/sys_ulock.c
+index 11918c6..a64c8de 100755
+--- a/bsd/kern/sys_ulock.c
++++ b/bsd/kern/sys_ulock.c
+@@ -690,6 +690,29 @@ sys_ulock_wait2(struct proc *p, struct ulock_wait2_args *args, int32_t *retval)
+ 		}
+ 	}
+ 
++	/*
++	 * SWEET ULOCK trace: log the lock word and the owner the kernel resolved.
++	 * A waiter whose owner is itself is re-entering a non-recursive unfair lock
++	 * (permanent self-deadlock); a waiter whose owner cannot be resolved points
++	 * at a thread that died while holding it.
++	 */
++	if (set_owner) {
++		static int sweet_ulock_logs;
++
++		if (sweet_ulock_logs < 120 &&
++		    (owner_thread == self || owner_thread == THREAD_NULL ||
++		    sweet_ulock_logs < 24)) {
++			sweet_ulock_logs++;
++			printf("SWEET ULOCK pid %d tid %d addr 0x%llx val 0x%x "
++			    "self %d owner_tid %d n %d\n",
++			    proc_pid(p), thread_tid(self),
++			    (unsigned long long)args->addr, (unsigned)value,
++			    (owner_thread == self) ? 1 : 0,
++			    (owner_thread == THREAD_NULL) ? -1 : thread_tid(owner_thread),
++			    sweet_ulock_logs);
++		}
++	}
++
+ 	wait_result_t wr;
+ 	uint64_t timeout = args->timeout; /* nanoseconds */
+ 	uint64_t deadline = TIMEOUT_WAIT_FOREVER;
