@@ -669,6 +669,27 @@ containermanagerd 读到这些损坏项后崩溃循环，backboardd 因此拿不
 `D:/ios-rootfs-work/fixed-1128-0454.simg`，11,583 MiB，sha256 `176390b1b9c68d10166850f820b03027…`。
 用 `fastboot flash userdata` 回写（基线镜像保留，可随时重建）。
 
+**回写后验证：崩溃链已切断（2026-11-28 08:05，boot 28，`[实测]`）**
+| boot | containermanager 崩溃 | IOMFB 查找 | swap | 迁移标记 |
+|---|---|---|---|---|
+| 24–27（修复前） | 57 / 72 / 54 / **123** | 0 | 0 | 5–6 |
+| **28（修复后）** | **0** | **1** | 有 | 4 |
+
+并且面板缓冲恢复收到内容：`SWEET FBSURF id 1 720x320 ... lit 72 of 14400`，
+`SWEET FBVIEW` 出现非空行（正中一块白色图形）：
+```
+|                          @@@@@@@@                          |
+|                          +@@@@@@@                          |
+```
+即「卷损坏 → containermanagerd 崩溃循环 → backboardd 不初始化显示」这条链**已被切断**。
+用户实机确认屏幕上出现了苹果标志（比例被 `fit=1` 压扁，属预期）。
+
+**仍存在的风险（未消除）**：`migrationpluginwrapper`/`datamigrator` 仍出现 4 次，
+说明普通域的 `LastSystemVersion` **没能抑制迁移**（ByHost 的平台 UUID 算不出来）。
+所以「迁移写盘期间断电 → 再次损坏卷」的风险依旧。规则：
+**进度条在推进时不要断电**；若必须中断，就接受损坏并从 `fixed-1128-0454.simg` 重写。
+后续做显示实验应改用 `--rd-emmc-ro`（只读根）以彻底规避。
+
 **设备操作纠正（2026-11-27，实测）**：`fastboot reboot recovery` 返回 OKAY 但不进 recovery；
 `fastboot oem reboot-recovery` 报 `unknown command`；`fastboot boot <img>` **可用但要求纯 ASCII 路径**
 （中文文件名会导致失败），把 TWRP 复制成 `tmp/twrp.img` 即可；`fastboot boot` 传输中断后
