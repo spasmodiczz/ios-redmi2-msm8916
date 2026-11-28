@@ -1,0 +1,26 @@
+diff --git a/bsd/dev/wt86047_sdhci.c b/bsd/dev/wt86047_sdhci.c
+index c3a12e2..56fe46c 100644
+--- a/bsd/dev/wt86047_sdhci.c
++++ b/bsd/dev/wt86047_sdhci.c
+@@ -3022,9 +3022,20 @@ wt86047_sample_tick(void)
+ {
+ 	static uint32_t secs;
+ 	static uint32_t samples;
++	static int at = -1, step = 0, count = 0;
+ 
++	if (at < 0) {
++		int a = 120, s = 120, c = 8;
++
++		(void)PE_parse_boot_argn("smpsamp_at", &a, sizeof(a));
++		(void)PE_parse_boot_argn("smpsamp_step", &s, sizeof(s));
++		(void)PE_parse_boot_argn("smpsamp_count", &c, sizeof(c));
++		at = a > 0 ? a : 120;
++		step = s > 0 ? s : 120;
++		count = c > 0 ? c : 8;
++	}
+ 	secs++;
+-	if (samples >= 8 || secs < 120 || (secs % 120) != 0) {
++	if ((int)samples >= count || (int)secs < at || ((int)secs - at) % step != 0) {
+ 		return;
+ 	}
+ 	samples++;
