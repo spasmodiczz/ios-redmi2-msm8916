@@ -1,0 +1,28 @@
+diff --git a/osfmk/ipc/ipc_mqueue.c b/osfmk/ipc/ipc_mqueue.c
+index 9cf1c65..8723139 100755
+--- a/osfmk/ipc/ipc_mqueue.c
++++ b/osfmk/ipc/ipc_mqueue.c
+@@ -635,7 +635,7 @@ ipc_mqueue_post(
+ 		 */
+ 		static int sweet_ipc_logs;
+ 
+-		if (sweet_ipc_logs < 2500) {
++		if (sweet_ipc_logs < 3500) {
+ 			mach_msg_header_t *sweet_hdr = ikm_header(kmsg);
+ 			mach_msg_type_name_t remote =
+ 			    MACH_MSGH_BITS_REMOTE(sweet_hdr->msgh_bits);
+@@ -648,7 +648,13 @@ ipc_mqueue_post(
+ 				sweet_spid = task_pid(current_task());
+ 				sweet_rpid = (rtask != TASK_NULL) ? task_pid(rtask) : -1;
+ 				sweet_id = sweet_hdr->msgh_id;
+-				if (sweet_spid > 1 || sweet_rpid > 1) {
++				/*
++				 * launchd (pid 1) and its earliest children reply to each
++				 * other thousands of times in the first seconds and consumed
++				 * the whole budget in 0271. The processes of interest here
++				 * sit well above that band.
++				 */
++				if (sweet_spid >= 16 && sweet_rpid >= 16) {
+ 					sweet_ipc_logs++;
+ 					sweet_trace = TRUE;
+ 				}
