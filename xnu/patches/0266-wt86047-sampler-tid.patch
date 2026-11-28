@@ -1,0 +1,15 @@
+diff --git a/osfmk/kern/exception.c b/osfmk/kern/exception.c
+index a20a764..6952365 100755
+--- a/osfmk/kern/exception.c
++++ b/osfmk/kern/exception.c
+@@ -1022,7 +1022,9 @@ sweet_sample_task(const char *name, int pid, task_t task)
+ 			continue;
+ 		}
+ 		fp = get_saved_state_fp(ss);
+-		n = snprintf(line, sizeof(line), "SMP %s t%d pc 0x%llx lr 0x%llx sp 0x%llx bt", name, tn++,
++		n = snprintf(line, sizeof(line),
++		    "SMP %s t%d tid %d pc 0x%llx lr 0x%llx sp 0x%llx bt", name, tn++,
++		    thread_tid(thread),
+ 		    get_saved_state_pc(ss), get_saved_state_lr(ss), get_saved_state_sp(ss));
+ 		for (int i = 0; i < 16 && fp != 0 && (fp & 7) == 0 && n < (int)sizeof(line) - 20; i++) {
+ 			uint64_t frame[2];
