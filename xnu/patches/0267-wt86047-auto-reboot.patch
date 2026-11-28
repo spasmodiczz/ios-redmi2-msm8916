@@ -1,0 +1,48 @@
+diff --git a/bsd/dev/wt86047_sdhci.c b/bsd/dev/wt86047_sdhci.c
+index 56fe46c..3a70337 100644
+--- a/bsd/dev/wt86047_sdhci.c
++++ b/bsd/dev/wt86047_sdhci.c
+@@ -37,6 +37,7 @@
+ #if defined(ARM64_BOARD_CONFIG_WT86047)
+ 
+ #include <sys/param.h>
++#include <sys/reboot.h>
+ #include <sys/systm.h>
+ #include <sys/buf.h>
+ #include <sys/conf.h>
+@@ -3023,9 +3024,11 @@ wt86047_sample_tick(void)
+ 	static uint32_t secs;
+ 	static uint32_t samples;
+ 	static int at = -1, step = 0, count = 0;
++	static int reboot_at = -1;
+ 
+ 	if (at < 0) {
+ 		int a = 120, s = 120, c = 8;
++		int rb = 0;
+ 
+ 		(void)PE_parse_boot_argn("smpsamp_at", &a, sizeof(a));
+ 		(void)PE_parse_boot_argn("smpsamp_step", &s, sizeof(s));
+@@ -3033,8 +3036,23 @@ wt86047_sample_tick(void)
+ 		at = a > 0 ? a : 120;
+ 		step = s > 0 ? s : 120;
+ 		count = c > 0 ? c : 8;
++		reboot_at = (PE_parse_boot_argn("sweetreboot", &rb, sizeof(rb)) && rb > 0) ? rb : 0;
+ 	}
+ 	secs++;
++
++	/*
++	 * End an experiment on its own instead of by pulling power: the root
++	 * volume is HFSX without a journal and cutting power while daemons are
++	 * writing corrupts it. reboot(2) goes through boot(), which syncs every
++	 * mounted filesystem first.
++	 */
++	if (reboot_at > 0 && (int)secs >= reboot_at) {
++		reboot_at = 0;
++		printf("SWEET REBOOT at %u s: syncing and restarting\n", secs);
++		reboot(RB_AUTOBOOT);
++		printf("SWEET REBOOT: reboot() returned\n");
++	}
++
+ 	if ((int)samples >= count || (int)secs < at || ((int)secs - at) % step != 0) {
+ 		return;
+ 	}
