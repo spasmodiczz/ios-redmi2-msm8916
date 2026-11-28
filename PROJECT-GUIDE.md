@@ -752,3 +752,40 @@ fastboot 协议层会卡死（连 `getvar` 都 5 s 超时），**拔插 USB** �
 | 取不到日志 | 先进 recovery；`adb devices` 应显示 `recovery` |
 | CI 失败 | 拉 `artifacts` 分支的 `build.log.gz`，`grep "error:"` |
 | 补丁套不上 | 用 `git apply --include=<file>` 按序重建基线，别用 `patch` |
+
+---
+
+## 十四、用户栈采样：SpringBoard 到底卡在哪（2026-11-28）
+
+**采样器此前在本树从未工作**：整个 16 MiB 环里 `SMP` 行数为 0（不是「没采到进程」，是线程根本没跑）。
+`0262` 把采样改由**日志刷写线程**驱动——它每秒醒一次的可靠性已被日志本身证明——立刻产出结果。
+
+**SpringBoard 的符号化栈（boot 30，两次采样完全一致 → 稳定阻塞，非忙等）**：
+```
+pc ___ulock_wait + 8
+lr __os_unfair_lock_lock_slow + 200
+   _LSContextInitCommon(LSContext*, _LSDServiceDomain*, unsigned long, NSError**) + 212
+   _LSContextInitWithOptions + 12
+   LaunchServices::Database::Context::_get(_LSDServiceDomain*, unsigned long) + 108
+   -[LSApplicationRecord _initWithNode:bundleIdentifier:placeholderBehavior:…] + 140
+   -[LSApplicationRecord initWithBundleIdentifier:allowPlaceholder:error:] + 52
+   -[CCSModuleRepository _queue_filterModuleMetadataByAssociatedBundleAvailability:]_block_invoke + 84
+   _BSCollectionFilter + 216
+   -[CCSModuleRepository _queue_filterModuleMetadataByAssociatedBundleAvailability:] + 48
+```
+含义：SpringBoard 初始化控制中心模块仓库 → 检查模块对应 App 是否存在 → 进 LaunchServices
+数据库初始化 → **卡在 LSContext 的 unfair lock**。全进程只有 2 个线程，另一个是空闲的
+`___workq_kernreturn`/`__pthread_wqthread`，**不是持锁者**。
+
+**这与参考移植的结论不同**：参考记录的是 SpringBoard 阻塞在同步 XPC；本机是 unfair lock。
+
+**工具（可复用）**
+- 采样：boot-arg `sweetsample=a,b`；`0262` 在 120 s 起每 120 s 采一次，共 8 次。
+- 符号化：`tmp/sym.sh <地址…>`，地址**必须先减 `slide`**（boot 30 是 `0x3a888000`）。
+  依赖 `ipsw` 3.1.752（已装 `/usr/local/bin/ipsw`）与只读挂载的 `iOSRoot.img` 共享缓存。
+- 注意：从 Windows 侧下载 release 时，`ipsw` 的资产名是 `ipsw_<ver>_linux_x86_64.tar.gz`
+  （没有 `linux_amd64`）；WSL 内的 `127.0.0.1` 不是 Windows 的代理，需在 Windows 侧下载。
+
+**下一步**：把 `lsd` 纳入采样（`sweetsample=SpringBoard,backboardd,lsd`），
+确认 lsd 是否也阻塞在同一处 —— 若是，问题落在 LaunchServices 数据库本身
+（`/private/var/containers`、`/private/var/mobile/Library/...`），而不在 SpringBoard。

@@ -1,4 +1,4 @@
 repo: git@github.com:spasmodiczz/ios-redmi2-msm8916.git
 branch: main
-commit: 33f942878cd6d920b35c78922c2f141d1a50ff7e
-patches: 254
+commit: 4ea07c5baf002f775d6f2c185f3be461d5b6d568
+patches: 256

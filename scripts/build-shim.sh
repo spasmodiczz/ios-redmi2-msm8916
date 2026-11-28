@@ -119,9 +119,12 @@ ADT_NATIVE=""
 if [ "$FB_NATIVE" = 1 ]; then
 	ADT_NATIVE="--native"
 fi
+# 面板越大，blitPanel() 每帧的 BGRA→BGR24 转换越贵（720x1280 每帧写 2.7 MB）；
+# 整屏时把扫描频率降下来，避免单核被这个循环吃满。
+FB_HZ="${SWEET_FB_HZ:-30}"
 
 CMDLINE="debug=0x14e serial=3 disable_kprintf_output=0 \
-sweetfb_native=$FB_NATIVE sweetfb_noconsole=1 sweetfb_hz=30 sweetfb_stayon=1 sweethidtest=0 \
+sweetfb_native=$FB_NATIVE sweetfb_noconsole=1 sweetfb_hz=$FB_HZ sweetfb_stayon=1 sweethidtest=0 \
 cpus=1 sweetcpufreq=0 sweetbattery=0 \
 unentitled_ios_sim_launch=1 launchd_unsecure_cache=1 wdt=-1 wdt_test=no_user_checkin ignition_level=1 \
 -v keepsyms=1 wt86047"
