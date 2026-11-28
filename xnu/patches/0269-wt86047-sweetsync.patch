@@ -1,0 +1,39 @@
+diff --git a/bsd/dev/wt86047_sdhci.c b/bsd/dev/wt86047_sdhci.c
+index 2a41665..b3f0cb1 100644
+--- a/bsd/dev/wt86047_sdhci.c
++++ b/bsd/dev/wt86047_sdhci.c
+@@ -37,11 +37,7 @@
+ #if defined(ARM64_BOARD_CONFIG_WT86047)
+ 
+ #include <sys/param.h>
+-#include <sys/reboot.h>
+-
+-/* reboot(2) is a userspace declaration; this is the kernel entry it
+- * reaches, and it syncs every mounted filesystem before restarting. */
+-extern int reboot_kernel(int howto, char *message);
++#include <sys/sysproto.h>	/* sys_sync: the body of sync(2) */
+ #include <sys/systm.h>
+ #include <sys/buf.h>
+ #include <sys/conf.h>
+@@ -3040,7 +3036,7 @@ wt86047_sample_tick(void)
+ 		at = a > 0 ? a : 120;
+ 		step = s > 0 ? s : 120;
+ 		count = c > 0 ? c : 8;
+-		reboot_at = (PE_parse_boot_argn("sweetreboot", &rb, sizeof(rb)) && rb > 0) ? rb : 0;
++		reboot_at = (PE_parse_boot_argn("sweetsync", &rb, sizeof(rb)) && rb > 0) ? rb : 0;
+ 	}
+ 	secs++;
+ 
+@@ -3052,9 +3048,9 @@ wt86047_sample_tick(void)
+ 	 */
+ 	if (reboot_at > 0 && (int)secs >= reboot_at) {
+ 		reboot_at = 0;
+-		printf("SWEET REBOOT at %u s: syncing and restarting\n", secs);
+-		(void)reboot_kernel(RB_AUTOBOOT, NULL);
+-		printf("SWEET REBOOT: reboot_kernel() returned\n");
++		printf("SWEET SYNC at %u s: flushing filesystems\n", secs);
++		(void)sync((struct proc *)NULL, (void *)NULL, (int *)NULL);
++		printf("SWEET SYNC done at %u s: writes quiesced, power off is safe\n", secs);
+ 	}
+ 
+ 	if ((int)samples >= count || (int)secs < at || ((int)secs - at) % step != 0) {
