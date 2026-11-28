@@ -684,11 +684,22 @@ containermanagerd 读到这些损坏项后崩溃循环，backboardd 因此拿不
 即「卷损坏 → containermanagerd 崩溃循环 → backboardd 不初始化显示」这条链**已被切断**。
 用户实机确认屏幕上出现了苹果标志（比例被 `fit=1` 压扁，属预期）。
 
-**仍存在的风险（未消除）**：`migrationpluginwrapper`/`datamigrator` 仍出现 4 次，
-说明普通域的 `LastSystemVersion` **没能抑制迁移**（ByHost 的平台 UUID 算不出来）。
-所以「迁移写盘期间断电 → 再次损坏卷」的风险依旧。规则：
-**进度条在推进时不要断电**；若必须中断，就接受损坏并从 `fixed-1128-0454.simg` 重写。
-后续做显示实验应改用 `--rd-emmc-ro`（只读根）以彻底规避。
+**更正：迁移自 boot 21 起就没有再运行**（2026-11-28 08:10，按启动统计，`[实测]`）
+| boot | `exec datamigrator`（查询服务） | `exec migrationpluginwrapper`（真正执行迁移） |
+|---|---|---|
+| 24–27 | 1–2 | **0** |
+| 28 | 4 | **0** |
+
+`datamigrator` 只是「是否需要迁移」的判定服务，被 launchd 反复拉起属于正常；
+真正写盘的是 `migrationpluginwrapper`，而它自 boot 21 起**一次都没运行**。
+所以此前「迁移仍未被抑制」是**把查询当成了执行**，结论作废。
+因果链据此修正为：**损坏由 boot 20 那次 79 分钟迁移造成**；其后各次启动并未再迁移，
+只是坏卷拖垮 containermanagerd，直到 boot 28 回写后恢复。
+既然迁移不再运行，**再次损坏的概率很低**，`fixed-1128-0454.simg` 应视为恢复备份而非耗材。
+
+**观察画面时应避开 `fit=1`**：它把 2436 行压进 320 行，垂直压缩约 7.6 倍，进度条几乎无法判读。
+用默认（`fit=0`）的「舷窗」裁切——取画布中央 720×320、1:1 无缩放——logo 与进度条正好落在其中，
+形态真实，适合目视判断。`fit=1` 只适合「确认整幅画面存在」，不适合读进度。
 
 **设备操作纠正（2026-11-27，实测）**：`fastboot reboot recovery` 返回 OKAY 但不进 recovery；
 `fastboot oem reboot-recovery` 报 `unknown command`；`fastboot boot <img>` **可用但要求纯 ASCII 路径**
